@@ -1,0 +1,8 @@
+Agenda
+
+1. Beyond k-means: prob, Dbscan
+2. Cluster eval: Recap, Davies Bouldin, cf. Phillips Paper for more?
+3. Feature Selection (search based on cluster eval? + FeatureImpCluster)
+4. Outlier detection
+
+5. Unknown categories [likely too much]

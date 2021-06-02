@@ -1,0 +1,612 @@
+---
+title: "Practical Application of Clustering in Insurance: Clustering of Marine Losses"
+output:   
+  html_document:
+    toc: true
+    number_sections: true
+    theme: readable
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+---
+
+# Primer
+
+This is an example on how to use clustering techniques to analyze insurance data, not a blue print or best practice that can be followed for any other analysis. Any data analysis, in particular in unsupervised learning, relies heavily on domain knowledge and the application at hand. Even for this data set several other reasonable approaches could have been taken given a different set of assumptions and goals.
+
+# The dataset
+
+This is an [CAS datasets](http://cas.uqam.ca/pub/web/CASdatasets-manual.pdf). From the official description:
+
+>> The univariate dataset was collected by an unknown French private insurer and comprise 1,274 marine losses between the January 2003 and June 2006. The status of the claim (settled or opened) is determined at the end of June 2006.
+
+
+```{r message=FALSE, warning=FALSE}
+# install.packages("CASdatasets", repos = "http://cas.uqam.ca/pub/", type="source")
+library(CASdatasets)
+seed_var <- 03052021
+```
+
+
+
+```{r}
+data(fremarine)
+```
+
+
+```{r}
+summary(fremarine)
+```
+
+
+We put us into the position of a fictional claims analyst that wants to understand the losses better, having the following questions / whishes in mind:
+
+* Being new in the position, I do not have a good overview of recent losses. Previous analyses where focused on single cases rather then the overall portfolio.
+* With a segmentation of our recent losses I could the monitor the loss development over time.
+
+* Unfortunately, we are not enough people to review each claim in depth. New claims that do not fit very well to the existing segmentation, e.g., are quite far away from all centroids, could be marked as outliers and trigger a detailed assessment.
+
+* Claims handlers would like to gain efficiency by specialising on certain portfolio segments (large ships vs small etc.)
+
+* My underwriting colleagues would like to understand our losses better but many of them do not have a quantitative background. With a few representative examples (e.g., cluster centroids), I could give them a simplified but complete overview over our recent losses.
+
+
+## Data set dictionary
+
+The data set is of mixed data type:
+
+```{r}
+sapply(fremarine,FUN=class)
+```
+
+A (somewhat brief) explanation can be found in the manual and is shown below:
+
+Date variables: 
+
+* OccurDate: The day of claim occurence
+* ReporDate: The day of claim reporting.ShipCategThe category of the insured ship
+
+Factor variables:
+
+* ShipBrand: The brand of the insured ship
+* ShipHull: The hull of the insured ship
+* Departement: The French region in which the ship is headquartered
+
+Numeric variables:
+
+* ShipPower:The power of the insured ship
+* ShipEngNb: The engine number of the insured ship
+* ShipEngYear: The engine year of the insured ship
+* ShipBuildYear: The building year of the insured ship
+* ShipLength: The length of the insured ship
+* ShipTonnage: The tonnage of the insured ship
+* InsuredValue: The insured value of the insured ship
+* ClaimPaid: The paid amount (EUR) of the claim
+* ClaimStatus: The status of the claim. Unsettled
+
+
+### Assumptions
+
+For simplicity, we assume the paid claims includes the final amount paid to the policyholder after deductible, recourse etc. We will also restrict our analysis to settled claims only for which we have complete and final information.
+
+Additionally, we decide not to use the date since:
+
+* Our (fictional) claims colleagues assure that our recent data set is quite homogeneous in time, there should not be strong trends.
+* New claims, obviously, have a date outside of the existing range making it hard to segment them otherwise.
+
+Thus we arrive at the following basis for our analysis:
+
+```{r, message=FALSE, warning=FALSE}
+library(data.table)
+cat_vars <- c("ShipBrand","ShipHull","Departement")
+num_vars <- c("ShipPower","ShipEngNb","ShipEngYear","ShipBuildYear","ShipLength","ShipTonnage","InsuredValue","ClaimPaid")
+dat4clustering <- as.data.table(fremarine)
+dat4clustering <- dat4clustering[ClaimStatus=="settled",mget(c(num_vars,cat_vars))]
+```
+
+
+### Data preview
+
+```{r, message=FALSE, warning=FALSE}
+library(DT)
+datatable(dat4clustering, filter = 'top', options = list(pageLength = 5, autoWidth = TRUE))
+```
+
+
+## Fictional Setting
+
+For educational reasons, we imagine 3 different settings:
+
+1. The data set does only contain numeric variables and no missings.
+2. The data set does only contain numeric variables but some missings.
+2. The data set contains numeric and categorical variables.
+
+# Cluster analysis examples
+
+
+## Numeric clustering without missings {.tabset}
+
+### Pre-processing
+
+We remove categorical variables, missings and ensure that we do not introduce any duplicates
+
+```{r}
+dat_num_no_missings = unique(na.omit(dat4clustering[,mget(num_vars)]))
+```
+
+Here we use the Euclidean metric here. Since the numeric variables are measured on different scales (years, counts, EURs, sizes, etc.) we have to center and scale the data:
+
+```{r}
+dat_num_no_missings_scaled = scale(dat_num_no_missings)
+```
+
+
+First look at the data:
+
+```{r, message=FALSE, warning=FALSE}
+library(ggridges)
+library(ggplot2)
+
+data4ridgeplot <- melt(as.data.table(dat_num_no_missings_scaled))
+ggplot(data4ridgeplot) +  geom_density_ridges(aes(x = value, y = variable)) + theme_ridges() + theme(legend.position = "none") + xlim(-2.5,2.5) # given a normal distribution ~1% should be outside of this range
+```
+
+Typically, variables with a large variance turn out to be more important differentiators. 
+
+
+### Determining the initial number of clusters
+
+We will perform a K-means Cluster Analysis using the flexclust package here.
+
+```{r message=FALSE}
+library(flexclust)
+```
+
+Runs clustering algorithms repeatedly for different numbers of clusters and returns the minimum within cluster distance solution for each. 
+Sum of within cluster distances which is decreasing with k (since between cluster distances are not counted). Ideally we'd look for an elbow / hockey stick.
+
+```{r}
+k_try <-2:15
+find_k <- stepFlexclust(dat_num_no_missings_scaled,k_try,nrep=5,verbose=FALSE, seed=seed_var, FUN=cclust)
+```
+
+Based on the result our claims analyst finds a number between 6 and 10 as reasonable.
+
+```{r}
+plot(find_k)
+```
+
+To test the stability of the resulting clusters, we run the clustering algorithm repeatedly for different numbers of clusters on bootstrap replica of the original data and analyze the Rand indices comparing pairs of partitions. To spead this up we make use of all our cores (4 in this example).
+
+```{r, message=FALSE, warning=FALSE}
+library("parallel")
+cl <- makeCluster(4, type = "PSOCK")
+clusterCall(cl, function() require("flexclust"))
+```
+
+We see that 6 clusters provide a quite stable assignment, so this so will work with 6 clusters from now on.
+
+```{r}
+nboot = 25
+k_try_boot = 5:10
+bcl <- bootFlexclust(dat_num_no_missings_scaled, k=k_try_boot, nboot=nboot, FUN=cclust, multicore=cl, seed = seed_var)
+summary(bcl)
+plot(bcl)
+```
+
+```{r}
+nr_clusters = 6
+cclust_res <-  getModel(find_k,nr_clusters-1)
+cclust_res
+```
+
+
+### Interpretation
+
+Visualization of clustering results
+
+#### Barchart of cluster centers
+
+A good starting point is to visualize the cluster centers and how they vary compared to the overall mean (which is zero on our scaled data). Based on this we can get some first understanding of Cluster 1 to 6:
+
+1. OLDIES: Older Ships with a very old engine. Not surprisingly, these ships have rather less power, are smaller and have a lower than average insured value
+2. LARGE: High powered ships of older built with rather low number of engines that are rather large and heavy.
+3. HEAVY POWER: Very High power ships that are quite big and heavy, with somewhat older engines though. They have have the highest insured value.
+4. NEWBEES: Newer ships that are a bit smaller in size.
+5. REFURBISHED: Older ships with newer engines rather with rather small length, little power and low tonnage.
+6. MULTIENGINE: Ships with a very high number of engines that are a bit newer and bigger than average.
+
+
+```{r , fig.height = 5, fig.width = 8}
+barchart(cclust_res)
+```
+
+The plot above is helpful but is hiding the variation within a cluster. With the jitter plot below we can see that there is, unsurprisingly, more variation in the small clusters 3 and 6. Also there are quite some outliers: In cluster 2 some ships are quite new, for example.
+
+We can also observe that the interpretation of cluster centroids may not hold true for all observations. For example. in cluster 3, a very large number of ships have quite new engines. So engine year is not of good characterization criterion for this cluster.
+
+```{r , fig.height = 5, fig.width = 10}
+dat_with_clusters <- as.data.table(dat_num_no_missings_scaled)
+dat_with_clusters[,cluster:=predict(cclust_res)]
+data4plot <- melt(dat_with_clusters,id.vars = "cluster",variable.name="Features")
+ggplot(data4plot, aes(x = value, y = Features)) + geom_jitter() + facet_grid(~cluster) + geom_vline(aes(xintercept = 0,color="red")) + guides(color=FALSE) + xlim(-2.5,2.5)
+```
+
+#### Feature importance
+
+Permutation based approach to determine the overall relevance of a feature for the segmentation. Parallels the approach taken in classification.
+
+```{r message=FALSE}
+library(FeatureImpCluster)
+```
+
+You'll see that features with high importance strongly vary between cluster centroids (cf. barplot above).
+
+```{r}
+set.seed(seed_var)
+FeatureImp_res <- FeatureImpCluster(cclust_res,as.data.table(dat_num_no_missings_scaled))
+# print(FeatureImp_res)
+plot(FeatureImp_res)
+```
+
+#### Cluster similarity
+
+##### Centroids
+
+If method="centers", then first the pairwise distances between all centroids are computed and rescaled to [0,1]. The similarity between two clusters is then simply 1 minus the rescaled distance, i.e., the closer the centroids the higher the similarity.
+
+For example, cluster 1 and 5 are quite similar in this metric, 1 and 3 quite different.
+
+```{r}
+clusterSim(cclust_res,method="centers")
+```
+
+##### Shadows
+
+If method="shadow", then the similarity of two clusters is proportional to the number of points in a cluster, where the centroid of the other cluster is second-closest (i.e., the other cluster is the shadow of the investigated cluster). Since this does not produce a symmetric distance matrix, resulting values can be averaged with symmetric=TRUE.
+
+In more detail, the shadow value of each data point is defined as twice the distance to the closest centroid divided by the sum of distances to closest and second-closest centroid. If the shadow values of a point is close to 0, then the point is close to its cluster centroid. If the shadow value is close to 1, it is almost equidistant to the two centroids. Thus, a cluster that is well separated from all other clusters should
+have many points with small shadow values.
+
+Compared to the centroids methods, the results are less ambiguous (more 0s), but qualitatively similar. Cluster 2 is almost always “shadowing cluster” 3: If cluster 3 did not exist, you would put most ships from this cluster into cluster 2, and only a few into the other clusters. T-SNE will show us how this looks like in 2 dimensions.
+
+```{r}
+clusterSim(cclust_res,method="shadow")
+```
+
+#### Silhouette plot
+
+The silhouette value of a data point is defined as the scaled difference between the average distance of a point to all points in its own cluster to the smallest average distance to the points of a different cluster (the "2nd closest" cluster). Large silhouette values indicate good separation.This values are shown below with a within cluster average. All clusters seem fairly well separated except cluster 3.
+
+
+```{r}
+plot(Silhouette(cclust_res,data=dat_num_no_missings_scaled))
+```
+
+Silhouette plots are often also used to decide on the number of clusters. However, in our example we only observe that are larger number coincides with more clusters with a bad separation (set eval=TRUE to see the result)
+
+```{r, eval=FALSE}
+plot(Silhouette(getModel(find_k,4-1),data=dat_num_no_missings_scaled))
+plot(Silhouette(getModel(find_k,5-1),data=dat_num_no_missings_scaled))
+plot(Silhouette(getModel(find_k,6-1),data=dat_num_no_missings_scaled))
+plot(Silhouette(getModel(find_k,7-1),data=dat_num_no_missings_scaled))
+plot(Silhouette(getModel(find_k,8-1),data=dat_num_no_missings_scaled))
+```
+
+
+#### Vizualization
+
+Visualization of high-dimensional data into 2 (or 3) dimension can be done via linear (Principal Component Analysis, Multidimensional Scaling) or non-linear projection methods. While non-linear methods often achieve better projections, they are computationally more costly and have several hyper parameters.
+
+##### PCA
+
+Principal Component Analysis performs a singluar value decomposition on the data matrix. The first two principal components (PC) capture roughly 55% of the variance.
+
+```{r}
+data_pca <- prcomp(dat_num_no_missings_scaled)
+summary(data_pca)
+```
+
+PCA returns the data w.r.t to the new coordinates PC1-PC8, plus a rotation matrix to convert it back to the original coordinates, e.g., for the first data point we have:
+
+```{r}
+sum(abs(dat_num_no_missings_scaled[1,]-data_pca$rotation %*% data_pca$x[1,]))<1e-13
+```
+
+This allows a 2-dimensional plot of our data that keeps at least half of the true variation. Some clusters are heavily overlapping in this view. Likely, they differ in the other PC dimensions.
+
+```{r}
+ggplot(as.data.frame(data_pca$x),aes(x=PC1,y=PC2,color=factor(predict(cclust_res)))) + geom_point() + guides(color=guide_legend(title="Cluster"))
+```
+
+
+##### T-SNE
+
+T-SNE maps a set of points from a high-dimensional space in a lower-dimensional
+Mapping should preserve the local neighbourhood structure of each point by minimizing Kullback-Leibler divergence between the two distributions
+
+
+```{r, message=FALSE, warning=FALSE}
+library(Rtsne)
+```
+
+```{r}
+set.seed(seed_var)
+tsne_out <- Rtsne(dat_num_no_missings_scaled,pca=FALSE, perplexity = 30)
+```
+
+Within this (non-linear) 2-dimensional projection, cluster 6 is rather separated from the other points: All other clusters have a much lower number of engines. 
+
+Also, we can recover the result that cluster 2 is almost always "shadowing cluster" 3, and perhaps one could just see these two as one single cluster.
+
+```{r}
+data_tsne <- as.data.table(tsne_out$Y)
+ggplot(data_tsne,aes(x=V1,y=V2,color=factor(predict(cclust_res)))) + geom_point() + guides(color=guide_legend(title="Cluster"))
+```
+
+##### UMAP
+
+Uniform Manifold Approximation and Projection (UMAP) is an algorithm for dimensional reduction. UMAP is known to more clearly separates groups of similar categories from each other. In general it is faster than T-SNE, however we use only the R implementation here.
+
+```{r, message=FALSE, warning=FALSE}
+library(umap)
+```
+
+
+```{r}
+umap_out <- umap(dat_num_no_missings_scaled, random_state=seed_var, min_dist = .4)
+umap_out
+```
+
+Overall we see quite some similarity between the results of UMAP and T-SNE: For example, Cluster 6 is always quite separated where 3 is quite embedded into 2.
+
+```{r}
+umap_4_plot <-  as.data.table(umap_out$layout)
+ggplot(umap_4_plot,aes(x=V1,y=V2,color=factor(predict(cclust_res)))) + geom_point() + guides(color=guide_legend(title="Cluster"))
+```
+
+#### Distance based Outlier detection
+
+We'll compute the distance of each data point to its cluster centroid to identify the top 5 points that are farthest away from it, and in that sense "special".
+
+```{r}
+centers_matrix <- cclust_res@centers[predict(cclust_res,dat_num_no_missings_scaled), ]
+distances <- sqrt(rowSums((dat_num_no_missings_scaled - centers_matrix)^2))
+outliers <- order(distances, decreasing=T)[1:5]
+```
+
+
+```{r}
+print(outliers)
+```
+
+For example, data point 253 lies in cluster 3 but has a rather low insured value and a very high paid claim. That is something our claims analyst might want to analyze further.
+
+```{r}
+dat_num_no_missings_scaled[outliers,]
+predict(cclust_res,dat_num_no_missings_scaled[outliers,])
+```
+
+These are indeed the points that do not look well separated in the "T-SNE map".
+
+```{r}
+data_tsne$distances <- distances
+ggplot(data_tsne,aes(x=V1,y=V2,color=distances)) + geom_point() + scale_color_gradient2()
+```
+
+#### Feature selection via Feature Importance
+
+Iterating over various seeds and bootstrap distributions gives a more robust estimate of feature importance.
+
+```{r}
+# randomly sample starting seeds
+set.seed(seed_var)
+nr_seeds <- 5
+sub <- 0.7
+biter <- 5
+seeds_vec <- sample(1:10000,nr_seeds)
+
+savedImp <- data.frame(matrix(0,nr_seeds,dim(dat_num_no_missings_scaled)[2]))
+count <- 1
+for (s in seeds_vec) {
+  set.seed(s)
+  res <- cclust(dat_num_no_missings_scaled,k=nr_clusters)
+  set.seed(s)
+  FeatureImp_res <- FeatureImpCluster(res,as.data.table(dat_num_no_missings_scaled),sub = sub,biter = biter)
+  savedImp[count,] <- FeatureImp_res$featureImp[sort(names(FeatureImp_res$featureImp))]
+  count <- count + 1
+}
+names(savedImp) <- sort(names(FeatureImp_res$featureImp))
+```
+
+Turns out that feature importance is quite stable. Claims paid might be as well removed from the data for clustering purposes.
+
+```{r, fig.height = 5, fig.width = 11}
+boxplot(savedImp)
+```
+
+
+## Numeric clustering incl. missings {.tabset}
+
+### Simulated missings
+
+```{r}
+dat_num = unique(dat4clustering[,mget(num_vars)])
+```
+
+
+```{r fig.height = 5, fig.width = 11, warning=FALSE}
+library(mice)
+md.pattern(dat_num)
+```
+
+In this case we have either "all or nothing". Since there is no hope to estimate all ship characteristics from just insured value and payout, imputation is not a reasonable approach here. Hence we will work with simulated missings.
+
+```{r message=FALSE, warning=FALSE}
+library(ClustImpute)
+library(corrplot)
+library(ClusterR)
+```
+
+We will use a helper function from the ClustImpute package to create 10% missings of each variable. As we can see the missings between the variables are correlated in a random way (so called missing at random schema). Thus mean value imputation or random imputation would introduce a bias to our results.
+
+```{r}
+share_of_missings = .1
+dat_with_miss <- miss_sim(dat_num_no_missings_scaled,p=share_of_missings,seed_nr=seed_var,type = "MAR")
+mis_ind <- is.na(dat_with_miss) # missing indicator
+corrplot(cor(mis_ind),method="number")
+```
+
+### ClustImpute
+
+In the original research article, it was recommended to set the convergence point of the weight function to 30% or 60% of the total number of iterations and both the number of iteration and the number of inner clustering steps (i.e., before imputation) to number is the ~10s. We follow this recommendation here.
+
+```{r}
+res_clustimpute <- ClustImpute(as.data.frame(dat_with_miss),nr_cluster=nr_clusters,seed_nr=seed_var,nr_iter=10,n_end=6,c_steps=15)
+```
+
+We'll make use of the RandIndex to compare the result of Clustimpute on missing data with the original result from flexclust (taking the latter as "true labels"):
+
+```{r}
+external_validation(predict(cclust_res), res_clustimpute$clusters)
+```
+
+
+### Cluster results & Visualization
+
+Besides the visualization techniques seen before, ClustImpute has two build-in types of marginal plots: histogram and barplot. The histogram shows the marginal distribution by cluster and feature together with the cluster centroid (orange).
+
+```{r , fig.height = 13, fig.width = 15}
+plot(res_clustimpute,size_vline=1.5)+xlim(-2.5,2.5)+geom_vline(xintercept=0,color="red")
+```
+
+The box plot shows, in particular, that marginal distributions within a cluster might become quite skewed, potentially in different directions as for ShipEngYear. Also some clusters have a more narrow specified distribution. For example, ShipPower is less clearly specified in cluster 4 and 5 than in the other clusters.
+
+```{r , fig.height = 10, fig.width = 15}
+plot(res_clustimpute,type="box")+xlim(-5,5)
+```
+
+We can visualize the completed data and clustering results using T-SNE.
+
+```{r}
+set.seed(seed_var)
+complete_data_without_duplicates = unique(res_clustimpute$complete_data)
+tsne_out_2 <- Rtsne(complete_data_without_duplicates,pca=FALSE)
+data_tsne_2 <- as.data.table(tsne_out_2$Y)
+ggplot(data_tsne_2,aes(x=V1,y=V2,color=factor(predict(res_clustimpute,complete_data_without_duplicates)))) + geom_point() + guides(color=guide_legend(title="Cluster"))
+```
+
+T-SNE on full data (normally not possible in the setting of real missings): We can observe that what is now cluster 6 and 5 was cluster 2 and 3 before, and what is now cluster 4 was cluster 6.
+
+It is normal that the ordering of the clustering changes in a new run, therefore the RandIndex is independent of this.
+
+```{r}
+ggplot(data_tsne,aes(x=V1,y=V2,color=factor(res_clustimpute$clusters))) + geom_point() + guides(color=guide_legend(title="Cluster"))
+```
+
+A good diagnostic based for any stochastic imputation approach is to monitor mean and std. error of the imputed value to observe that both values converge to a stationary distribution with increasing number of iterations.
+
+
+### MICE + Flexclust
+
+We run MICE here as a pre-processing step. The package creates multiple imputations (here: only 1) for multivariate missing data using predictive mean matching (other methods available as well).
+
+```{r}
+dat_mice <- mice(dat_with_miss, printFlag=FALSE, seed=seed_var, m=1)
+```
+
+After this step the data does not include NAs anymore, so we can run cclust as in the example above.
+
+```{r}
+dat_mice_completed <- complete(dat_mice)
+cclust_after_mice <- cclust(dat_mice_completed,k=nr_clusters)
+```
+
+The result is slightly worse compared to ClustImpute.
+
+```{r}
+external_validation(predict(cclust_res), predict(cclust_after_mice))
+```
+
+
+## Mixed-type Data {.tabset}
+
+Here we will use the full data including the categorical features ShipBrand, ShipHull and Departement. We use the clustMixType package here the allows the use of Gower's distance with an automatic estimation of the lambda parameter.
+
+
+### Pre-processing
+
+```{r message=FALSE, warning=FALSE}
+library(clustMixType)
+```
+
+* For this data set, there might be some chance to impute ShipBrand since there are 150 cases where it is missing but all other variables are available, plus 789 cases where it is available as well. 
+* Department has no missing. 
+* When ShipHull is missing then all numerical variables are missing as well, so there is no hope of imputing this value.
+
+```{r fig.height = 5, fig.width = 11}
+md.pattern(dat4clustering)
+```
+
+However, we'll filter out NAs here and focus only on the clustering part. In practice, you could use mice here to complete the data as in the example before, but it may be a good starting point to first consider only available data. Perhaps a missing features turns out to be irrelevant.
+
+```{r}
+dat_no_missings = unique(na.omit(dat4clustering[,mget(c(num_vars,cat_vars))]))
+```
+
+As before the numerical variables have to be scaled with scale() as above. Then we re-add the categorical features again.
+
+```{r}
+dat_no_missings_scaled <- as.data.table(scale(dat_no_missings[,mget(num_vars)]))
+dat_no_missings_scaled[,ShipBrand:=dat_no_missings$ShipBrand]
+dat_no_missings_scaled[,ShipHull:=dat_no_missings$ShipHull]
+dat_no_missings_scaled[,Departement:=dat_no_missings$Departement]
+```
+
+
+### Cluster results & Visualization
+
+Then we are ready to apply k-prototypes clustering. The number of optimal clusters may change here and one should re-do the analyses above for the numerical data, however, we keep the cluster number constant for the sake of simplicity.
+
+```{r }
+set.seed(seed_var)
+res_kproto <- kproto(x=dat_no_missings_scaled,k=nr_clusters)
+res_kproto$lambda
+```
+
+The algorithm puts a slightly higher weight to the categorical variables since lambda>1. Feature Importance shows that Brand and Departement are (almost) irrelevant when it comes to data segmentation, Hull does have some impact.
+
+```{r}
+set.seed(seed_var)
+FeatureImp_kproto <- FeatureImpCluster(res_kproto,dat_no_missings_scaled)
+plot(FeatureImp_kproto,dat_no_missings_scaled,color="type")
+```
+
+By looking at the cluster centroids we observe that indeed ShipBrand and Department are almost always equal to the most prevalent level. This implies that any other Department such as Charente Maritime has the same distance from all other centroids, for example. The "prototype" of a large, heavy and powerful ship is made of steel while wood is used for the opposite. 
+
+```{r}
+datatable(res_kproto$centers, filter = 'top', options = list(pageLength = 5, autoWidth = TRUE))
+```
+
+
+```{r}
+summary(dat_no_missings_scaled[,mget(cat_vars)])
+```
+
+Setting manually a lambda value of 2, we not only increase the impact of ShipHull but also make ShipBrand a differentiator of our clustering. This may seem odd, but setting lambda alters the metric which is, after all in clustering, a tuning parameter without a ground truth.
+
+```{r}
+lambda = 2
+set.seed(seed_var)
+res_kproto_manual <- kproto(x=dat_no_missings_scaled,k=nr_clusters,lambda=lambda)
+FeatureImp_kproto_manual <- FeatureImpCluster(res_kproto_manual,dat_no_missings_scaled)
+plot(FeatureImp_kproto_manual,dat_no_missings_scaled,color="type")
+```
+
+Indeed, 3 out of 6 clusters now have a brand different from BAUDOUIN (actually 3 out of 5 if we ignore cluster 4 that has only 3 data points)
+
+```{r}
+datatable(res_kproto_manual$centers, filter = 'top', options = list(pageLength = 5, autoWidth = TRUE))
+```
+
+UMAP & T-SNE require numerical data, so either one uses dummy coding are uses the categorical features only for visualization (e.g., changing the color according to ShipHull instead of predicted cluster)
