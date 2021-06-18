@@ -211,80 +211,89 @@ The result seems to be of less use for this data - most ships fall into cluster 
 
 ### Gaussian Mixture Model
 
-Gaussian Mixture Models fall into the category of probabilistic clustering methods. Models are estimated by EM algorithm.
-
-```{r}
-library(mclust)
-set.seed(seed_var)
-bic_res <- mclustBIC(dat_num_no_missings_scaled,G=5:8)
-```
-
-
-
-```{r}
-plot(bic_res,what="BIC",legendArgs = list(x="top"))
-```
-
-```{r}
-# too slow
-#  <- mclustBootstrapLRT(dat_num_no_missings_scaled, modelName = "EII",nboot=10,maxG = 8)
-```
-
-
-
-```{r}
-set.seed(seed_var)
-mclust_res <- Mclust(dat_num_no_missings_scaled,x=bic_res,G=7)
-summary(mclust_res)
-```
-
-a plot showing the clustering. For data in more than two dimensions a pairs plot is produced, followed by a coordinate projection plot using specified dimens. Ellipses corresponding to covariances of mixture components
-
-```{r fig.width=15, fig.height=15}
-plot(mclust_res,what="classification",addEllipses =TRUE)
-```
-
-
-https://cran.r-project.org/web/packages/mclust/vignettes/mclust.html
 https://en.proft.me/2017/02/1/model-based-clustering-r/
 
 
 ```{r}
 library(ClusterR)
+opt_gmm = Optimal_Clusters_GMM(dat_num_no_missings_scaled, max_clusters = 10, 
+                               criterion = "BIC", dist_mode = "eucl_dist", 
+                               seed_mode = "random_subset", seed= seed_var,
+                               km_iter = 10, em_iter = 10, var_floor = 1e-10,
+                               plot_data = T)
+```
+
+
+```{r}
+gmm_res = GMM(dat_num_no_missings_scaled,gaussian_comps  =  7, dist_mode = "eucl_dist", 
+              seed_mode = "random_subset", km_iter = 10, em_iter = 10, seed = seed_var)   
 ```
 
 
 
-### Interpretation / Comparision
-
-Visualization of clustering results
-
-#### Barchart of cluster centers
-
-A good starting point is to visualize the cluster centers and how they vary compared to the overall mean (which is zero on our scaled data). Based on this we can get some first understanding of Cluster 1 to 6:
-
-1. OLDIES: Older Ships with a very old engine. Not surprisingly, these ships have rather less power, are smaller and have a lower than average insured value
-2. LARGE: High powered ships of older built with rather low number of engines that are rather large and heavy.
-3. HEAVY POWER: Very High power ships that are quite big and heavy, with somewhat older engines though. They have have the highest insured value.
-4. NEWBEES: Newer ships that are a bit smaller in size.
-5. REFURBISHED: Older ships with newer engines rather with rather small length, little power and low tonnage.
-6. MULTIENGINE: Ships with a very high number of engines that are a bit newer and bigger than average.
-
-
-```{r , fig.height = 5, fig.width = 8}
-barchart(cclust_res)
+```{r}
+predictGMM <- function(x,dat) {
+  centroids = x$centroids
+  cov = x$covariance_matrices
+  w = x$weights
+  return (predict_GMM(dat,centroids,cov,w))
+}
 ```
 
-The plot above is helpful but is hiding the variation within a cluster. With the jitter plot below we can see that there is, unsurprisingly, more variation in the small clusters 3 and 6. Also there are quite some outliers: In cluster 2 some ships are quite new, for example.
 
-We can also observe that the interpretation of cluster centroids may not hold true for all observations. For example. in cluster 3, a very large number of ships have quite new engines. So engine year is not of good characterization criterion for this cluster.
-
-```{r , fig.height = 5, fig.width = 10}
-dat_with_clusters <- as.data.table(dat_num_no_missings_scaled)
-dat_with_clusters[,cluster:=predict(cclust_res)]
-data4plot <- melt(dat_with_clusters,id.vars = "cluster",variable.name="Features")
-ggplot(data4plot, aes(x = value, y = Features)) + geom_jitter() + facet_grid(~cluster) + geom_vline(aes(xintercept = 0,color="red")) + guides(color=FALSE) + xlim(-2.5,2.5)
+```{r}
+pred_gmm_res <- predictGMM(gmm_res,dat_num_no_missings_scaled)
+summary(factor(pred_gmm_res$cluster_labels))
 ```
+
+Since we deal with probabilistic models, we can compute the probability that each point x belongs to cluster k. Thus one often speaks of "soft clustering". As long as no decision is taken, each point belongs to each cluster with a certain probability. Naturally, one assigns each point to the most likely cluster. We observe that the probabilities of the most likely cluster are nicely skewed to the right, indicating a clear cluser assignment for most points.
+
+```{r}
+probab_of_majority_class <- apply(pred_gmm_res$cluster_proba,1,max)
+hist(probab_of_majority_class)
+```
+
+## Cluster evaluation
+
+https://cran.r-project.org/web/packages/clusterSim/index.html
+
+tsne again
+feature importance again
+
+
+
+## Dimensionality reduction
+
+For production or interpretation, reducing the the problem to a lower dimensional space can be helpful. What does this mean in a cluster analysis? We will show to (out of many) option:
+
+1. One can select a subset of features that are most important for the clustering assignment
+2. One can cluster the features to obtain groups of similar features
+
+In any case, this allows to re-compute the clusters on a lower dimensional space.
+
+### Feature Mapping
+
+We start by first computing the distance between the features
+
+```{r}
+dist_dat <- dist(t(dat_num_no_missings_scaled), method = "euclidean")
+dist_dat
+```
+
+http://www.sthda.com/english/wiki/beautiful-dendrogram-visualizations-in-r-5-must-known-methods-unsupervised-machine-learning#plot.dendrogram-function
+
+```{r}
+hc_res <- hclust(dist_dat)
+plot(hc_res)
+```
+
+Sine we normalized our data, all features are on the same scale, so we could aggregate features by taking the mean, for example. Thus, in order to reduce the dimension from 8 to 5, we could average Length and Tonnage to a single variable that we call ShipSize. Note that the values of this variable can not be interpreted anymore in a meaningful way. In principle, this would also allow us to cluster a ship if one of the values is missing, in this case we would simply put full weight on the other variable. 
+
+### Feature Selection
+
+write wrapper for gmm
+
+
 
 #### Feature importance
 
@@ -301,50 +310,6 @@ set.seed(seed_var)
 FeatureImp_res <- FeatureImpCluster(cclust_res,as.data.table(dat_num_no_missings_scaled))
 # print(FeatureImp_res)
 plot(FeatureImp_res)
-```
-
-#### Cluster similarity
-
-##### Centroids
-
-If method="centers", then first the pairwise distances between all centroids are computed and rescaled to [0,1]. The similarity between two clusters is then simply 1 minus the rescaled distance, i.e., the closer the centroids the higher the similarity.
-
-For example, cluster 1 and 5 are quite similar in this metric, 1 and 3 quite different.
-
-```{r}
-clusterSim(cclust_res,method="centers")
-```
-
-##### Shadows
-
-If method="shadow", then the similarity of two clusters is proportional to the number of points in a cluster, where the centroid of the other cluster is second-closest (i.e., the other cluster is the shadow of the investigated cluster). Since this does not produce a symmetric distance matrix, resulting values can be averaged with symmetric=TRUE.
-
-In more detail, the shadow value of each data point is defined as twice the distance to the closest centroid divided by the sum of distances to closest and second-closest centroid. If the shadow values of a point is close to 0, then the point is close to its cluster centroid. If the shadow value is close to 1, it is almost equidistant to the two centroids. Thus, a cluster that is well separated from all other clusters should
-have many points with small shadow values.
-
-Compared to the centroids methods, the results are less ambiguous (more 0s), but qualitatively similar. Cluster 2 is almost always “shadowing cluster” 3: If cluster 3 did not exist, you would put most ships from this cluster into cluster 2, and only a few into the other clusters. T-SNE will show us how this looks like in 2 dimensions.
-
-```{r}
-clusterSim(cclust_res,method="shadow")
-```
-
-#### Silhouette plot
-
-The silhouette value of a data point is defined as the scaled difference between the average distance of a point to all points in its own cluster to the smallest average distance to the points of a different cluster (the "2nd closest" cluster). Large silhouette values indicate good separation.This values are shown below with a within cluster average. All clusters seem fairly well separated except cluster 3.
-
-
-```{r}
-plot(Silhouette(cclust_res,data=dat_num_no_missings_scaled))
-```
-
-Silhouette plots are often also used to decide on the number of clusters. However, in our example we only observe that are larger number coincides with more clusters with a bad separation (set eval=TRUE to see the result)
-
-```{r, eval=FALSE}
-plot(Silhouette(getModel(find_k,4-1),data=dat_num_no_missings_scaled))
-plot(Silhouette(getModel(find_k,5-1),data=dat_num_no_missings_scaled))
-plot(Silhouette(getModel(find_k,6-1),data=dat_num_no_missings_scaled))
-plot(Silhouette(getModel(find_k,7-1),data=dat_num_no_missings_scaled))
-plot(Silhouette(getModel(find_k,8-1),data=dat_num_no_missings_scaled))
 ```
 
 
@@ -451,7 +416,7 @@ ggplot(data_tsne,aes(x=V1,y=V2,color=distances)) + geom_point() + scale_color_gr
 ```
 
 
-##### Using dbscan
+#### Using dbscan
 
 https://cran.r-project.org/web/packages/dbscan/vignettes/hdbscan.html
 
