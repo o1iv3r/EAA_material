@@ -182,51 +182,71 @@ find_k <- stepFlexclust(dat_num_no_missings_scaled,k_try,nrep=5,verbose=FALSE, s
 plot(find_k)
 ```
 
-Based on the result we select 5 clusters (and our analysis in the first part of this course)
+Based on the result we select 7 clusters
 
 ```{r}
-nr_clusters = 5
+nr_clusters = 7
 cclust_res <-  getModel(find_k,nr_clusters-1)
 cclust_res
 ```
 
 ### Hierarchical dbscan
 
-todo read paper!!!!!!
-
-We only have to specify the minPts parameter. Note that not all points are clustered.
+Here we are using a variant that of DBSCAN, hierarchical DBSCAN. It has the benefit that we do  only have to specify the minPts parameter. Note that not all points are clustered, cluster zero is contains all outliers. We want a cluster to contain at least 7 points.By playing around with this parameter, we see that a larger number produces very few clusters which would not be helpful, and a lower number leads to a lot of outliers. We observe that most points foll
 
 ```{r}
 library(dbscan)
-dbscan_res <- hdbscan(dat_num_no_missings_scaled, minPts = 7)
-dbscan_res
+hdbscan_res <- hdbscan(dat_num_no_missings_scaled, minPts = 7)
+hdbscan_res
 ```
 
-The eps value we can set post-hoc to determine the number of clusters?
+HDBSCAN essentially computes the hierarchy of all DBSCAN* clusterings, and then uses a stability-based extraction method to find optimal cuts in the hierarchy, thus producing a flat solution. Depending on a different value for eps, we could get more or less clusters using the dbscan() function from the same package.
 
 ```{r}
-plot(dbscan_res, show_flat=T)
+plot(hdbscan_res, show_flat=T)
 ```
 
+The result seems to be of less use for this data - most ships fall into cluster 2, the other categories are sparsely populated.
 
-todo
 
-### Probabilistc clustering
+### Gaussian Mixture Model
 
-todo
-
-https://cran.r-project.org/web/packages/mclust/vignettes/mclust.html
-https://en.proft.me/2017/02/1/model-based-clustering-r/
-
-#### Gaussian Mixture Models (GMM)
-
-Model-based clustering
+Gaussian Mixture Models fall into the category of probabilistic clustering methods. Models are estimated by EM algorithm.
 
 ```{r}
 library(mclust)
+set.seed(seed_var)
+bic_res <- mclustBIC(dat_num_no_missings_scaled,G=5:8)
 ```
 
 
+
+```{r}
+plot(bic_res,what="BIC",legendArgs = list(x="top"))
+```
+
+```{r}
+# too slow
+#  <- mclustBootstrapLRT(dat_num_no_missings_scaled, modelName = "EII",nboot=10,maxG = 8)
+```
+
+
+
+```{r}
+set.seed(seed_var)
+mclust_res <- Mclust(dat_num_no_missings_scaled,x=bic_res,G=7)
+summary(mclust_res)
+```
+
+a plot showing the clustering. For data in more than two dimensions a pairs plot is produced, followed by a coordinate projection plot using specified dimens. Ellipses corresponding to covariances of mixture components
+
+```{r fig.width=15, fig.height=15}
+plot(mclust_res,what="classification",addEllipses =TRUE)
+```
+
+
+https://cran.r-project.org/web/packages/mclust/vignettes/mclust.html
+https://en.proft.me/2017/02/1/model-based-clustering-r/
 
 
 ```{r}
