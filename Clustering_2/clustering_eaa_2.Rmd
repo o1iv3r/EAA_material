@@ -414,6 +414,11 @@ todo: same for GMM
 
 A simple supervised machine learning algorithm can be easier to interpret than a complex unsupervised algorithm.
 
+OneR will pick one single variable and then tries to find rules that associate its values with the target. 
+
+todo check out alternatives
+https://rviews.rstudio.com/2020/05/21/modern-rule-based-models/
+
 ```{r}
 library(OneR)
 dat_with_label <- dat_num_no_missings_scaled_df
