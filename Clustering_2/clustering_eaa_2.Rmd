@@ -121,12 +121,11 @@ For educational reasons, we imagine 3 different settings:
 2. The data set does only contain numeric variables but some missings.
 2. The data set contains numeric and categorical variables.
 
-# Cluster analysis examples
+# Data preparation
 
 
-## Numeric clustering without missings {.tabset}
+## Numeric features{.tabset}
 
-Good overview: https://cran.r-project.org/web/views/Cluster.html
 
 ### Pre-processing
 
@@ -170,8 +169,21 @@ ggpairs(dat_num_no_missings_scaled_df[,c("ShipLength","ShipTonnage")], progress=
 ```
 
 
+## Mixed-type Data {.tabset}
 
-### K-Means
+We'll filter out NAs here and focus only on the clustering part. In practice, you could use mice  to complete the data, but it may be a good starting point to first consider only available data. Perhaps on of the missing features turns out to be irrelevant.
+
+```{r}
+dat_no_missings = unique(na.omit(dat4clustering[,mget(c(num_vars,cat_vars))]))
+```
+
+
+
+# Clustering algorithms {.tabset}
+
+## K-Means
+
+### Numeric data
 
 We will perform a K-means Cluster Analysis using the flexclust package here. Below we run clustering algorithms repeatedly for different numbers of clusters and returns the minimum within cluster distance solution for each. The sum of within cluster distances which is decreasing with k (since between cluster distances are not counted). Ideally we'd look for an elbow / hockey stick.
 
@@ -190,7 +202,12 @@ cclust_res <-  getModel(find_k,nr_clusters-1)
 cclust_res
 ```
 
-### Hierarchical dbscan
+### Mixed data types
+
+One can use the clustMixType as in the first part of the course. Alternatively,one can use partitioning around medoids, where one computes the distance matrix using Gower's distance a-priori. However, this approach ist tather slow (and memory intensive) and works only for smaller data sets
+
+
+## Hierarchical dbscan
 
 Here we are using a variant that of DBSCAN, hierarchical DBSCAN. It has the benefit that we do  only have to specify the minPts parameter. Note that not all points are clustered, cluster zero is contains all outliers. We want a cluster to contain at least 7 points.By playing around with this parameter, we see that a larger number produces very few clusters which would not be helpful, and a lower number leads to a lot of outliers. We observe that most points foll
 
@@ -208,10 +225,13 @@ plot(hdbscan_res, show_flat=T)
 
 The result seems to be of less use for this data - most ships fall into cluster 2, the other categories are sparsely populated.
 
+Similarly as with k-means, data with mixed data types can per se be used with DBSCAN if the pairwise distances are computed a-priori.
 
-### Gaussian Mixture Model
 
-https://en.proft.me/2017/02/1/model-based-clustering-r/
+## Gaussian Mixture Model
+
+
+### Numerical data
 
 
 ```{r}
@@ -253,49 +273,25 @@ probab_of_majority_class <- apply(pred_gmm_res$cluster_proba,1,max)
 hist(probab_of_majority_class)
 ```
 
-## Cluster evaluation
+### Mixed data types
+
+```{r}
+library(clustvarsel)
+```
+
+
+# Cluster evaluation and interpretation {.tabset}
 
 https://cran.r-project.org/web/packages/clusterSim/index.html
 
 tsne again
 feature importance again
 
-
-
-## Dimensionality reduction
-
-For production or interpretation, reducing the the problem to a lower dimensional space can be helpful. What does this mean in a cluster analysis? We will show to (out of many) option:
-
-1. One can select a subset of features that are most important for the clustering assignment
-2. One can cluster the features to obtain groups of similar features
-
-In any case, this allows to re-compute the clusters on a lower dimensional space.
-
-### Feature Mapping
-
-We start by first computing the distance between the features
-
-```{r}
-dist_dat <- dist(t(dat_num_no_missings_scaled), method = "euclidean")
-dist_dat
-```
-
-http://www.sthda.com/english/wiki/beautiful-dendrogram-visualizations-in-r-5-must-known-methods-unsupervised-machine-learning#plot.dendrogram-function
-
-```{r}
-hc_res <- hclust(dist_dat)
-plot(hc_res)
-```
-
-Sine we normalized our data, all features are on the same scale, so we could aggregate features by taking the mean, for example. Thus, in order to reduce the dimension from 8 to 5, we could average Length and Tonnage to a single variable that we call ShipSize. Note that the values of this variable can not be interpreted anymore in a meaningful way. In principle, this would also allow us to cluster a ship if one of the values is missing, in this case we would simply put full weight on the other variable. 
-
-### Feature Selection
-
-write wrapper for gmm
+## Cluster evaluation metrics
 
 
 
-#### Feature importance
+## Feature Importance
 
 Permutation based approach to determine the overall relevance of a feature for the segmentation. Parallels the approach taken in classification.
 
@@ -308,38 +304,13 @@ You'll see that features with high importance strongly vary between cluster cent
 ```{r}
 set.seed(seed_var)
 FeatureImp_res <- FeatureImpCluster(cclust_res,as.data.table(dat_num_no_missings_scaled))
-# print(FeatureImp_res)
 plot(FeatureImp_res)
 ```
 
 
-#### Vizualization
+## Vizualization using T-SNE
 
 Visualization of high-dimensional data into 2 (or 3) dimension can be done via linear (Principal Component Analysis, Multidimensional Scaling) or non-linear projection methods. While non-linear methods often achieve better projections, they are computationally more costly and have several hyper parameters.
-
-##### PCA
-
-Principal Component Analysis performs a singluar value decomposition on the data matrix. The first two principal components (PC) capture roughly 55% of the variance.
-
-```{r}
-data_pca <- prcomp(dat_num_no_missings_scaled)
-summary(data_pca)
-```
-
-PCA returns the data w.r.t to the new coordinates PC1-PC8, plus a rotation matrix to convert it back to the original coordinates, e.g., for the first data point we have:
-
-```{r}
-sum(abs(dat_num_no_missings_scaled[1,]-data_pca$rotation %*% data_pca$x[1,]))<1e-13
-```
-
-This allows a 2-dimensional plot of our data that keeps at least half of the true variation. Some clusters are heavily overlapping in this view. Likely, they differ in the other PC dimensions.
-
-```{r}
-ggplot(as.data.frame(data_pca$x),aes(x=PC1,y=PC2,color=factor(predict(cclust_res)))) + geom_point() + guides(color=guide_legend(title="Cluster"))
-```
-
-
-##### T-SNE
 
 T-SNE maps a set of points from a high-dimensional space in a lower-dimensional
 Mapping should preserve the local neighbourhood structure of each point by minimizing Kullback-Leibler divergence between the two distributions
@@ -363,64 +334,38 @@ data_tsne <- as.data.table(tsne_out$Y)
 ggplot(data_tsne,aes(x=V1,y=V2,color=factor(predict(cclust_res)))) + geom_point() + guides(color=guide_legend(title="Cluster"))
 ```
 
-##### UMAP
-
-Uniform Manifold Approximation and Projection (UMAP) is an algorithm for dimensional reduction. UMAP is known to more clearly separates groups of similar categories from each other. In general it is faster than T-SNE, however we use only the R implementation here.
-
-```{r, message=FALSE, warning=FALSE}
-library(umap)
-```
 
 
-```{r}
-umap_out <- umap(dat_num_no_missings_scaled, random_state=seed_var, min_dist = .4)
-umap_out
-```
 
-Overall we see quite some similarity between the results of UMAP and T-SNE: For example, Cluster 6 is always quite separated where 3 is quite embedded into 2.
 
-```{r}
-umap_4_plot <-  as.data.table(umap_out$layout)
-ggplot(umap_4_plot,aes(x=V1,y=V2,color=factor(predict(cclust_res)))) + geom_point() + guides(color=guide_legend(title="Cluster"))
-```
+# Dimensionality reduction
 
-### Outlier detection
+For production or interpretation, reducing the the problem to a lower dimensional space can be helpful. What does this mean in a cluster analysis? We will show to (out of many) option:
 
-#### Distance based (k-means)
+1. One can select a subset of features that are most important for the clustering assignment
+2. One can cluster the features to obtain groups of similar features
 
-We'll compute the distance of each data point to its cluster centroid to identify the top 5 points that are farthest away from it, and in that sense "special".
+In any case, this allows to re-compute the clusters on a lower dimensional space.
+
+## Feature Mapping
+
+We start by first computing the distance between the features
 
 ```{r}
-centers_matrix <- cclust_res@centers[predict(cclust_res,dat_num_no_missings_scaled), ]
-distances <- sqrt(rowSums((dat_num_no_missings_scaled - centers_matrix)^2))
-outliers <- order(distances, decreasing=T)[1:5]
+dist_dat <- dist(t(dat_num_no_missings_scaled), method = "euclidean")
+dist_dat
 ```
 
+http://www.sthda.com/english/wiki/beautiful-dendrogram-visualizations-in-r-5-must-known-methods-unsupervised-machine-learning#plot.dendrogram-function
 
 ```{r}
-print(outliers)
+hc_res <- hclust(dist_dat)
+plot(hc_res)
 ```
 
-For example, data point 253 lies in cluster 3 but has a rather low insured value and a very high paid claim. That is something our claims analyst might want to analyze further.
+Sine we normalized our data, all features are on the same scale, so we could aggregate features by taking the mean, for example. Thus, in order to reduce the dimension from 8 to 5, we could average Length and Tonnage to a single variable that we call ShipSize. Note that the values of this variable can not be interpreted anymore in a meaningful way. In principle, this would also allow us to cluster a ship if one of the values is missing, in this case we would simply put full weight on the other variable. 
 
-```{r}
-dat_num_no_missings_scaled[outliers,]
-predict(cclust_res,dat_num_no_missings_scaled[outliers,])
-```
-
-These are indeed the points that do not look well separated in the "T-SNE map".
-
-```{r}
-data_tsne$distances <- distances
-ggplot(data_tsne,aes(x=V1,y=V2,color=distances)) + geom_point() + scale_color_gradient2()
-```
-
-
-#### Using dbscan
-
-https://cran.r-project.org/web/packages/dbscan/vignettes/hdbscan.html
-
-#### Feature selection via Feature Importance
+## Feature Selection using Feature Importance
 
 Iterating over various seeds and bootstrap distributions gives a more robust estimate of feature importance.
 
@@ -452,187 +397,55 @@ boxplot(savedImp)
 ```
 
 
-## Numeric clustering incl. missings {.tabset}
 
-### Simulated missings
+
+
+## Feature Selection in Model-based clustering
+
 
 ```{r}
-dat_num = unique(dat4clustering[,mget(num_vars)])
+library(clustvarsel)
 ```
 
 
-```{r fig.height = 5, fig.width = 11, warning=FALSE}
-library(mice)
-md.pattern(dat_num)
-```
 
-In this case we have either "all or nothing". Since there is no hope to estimate all ship characteristics from just insured value and payout, imputation is not a reasonable approach here. Hence we will work with simulated missings.
+# Outlier detection
 
-```{r message=FALSE, warning=FALSE}
-library(ClustImpute)
-library(corrplot)
-library(ClusterR)
-```
+## Distance based (k-means)
 
-We will use a helper function from the ClustImpute package to create 10% missings of each variable. As we can see the missings between the variables are correlated in a random way (so called missing at random schema). Thus mean value imputation or random imputation would introduce a bias to our results.
+We'll compute the distance of each data point to its cluster centroid to identify the top 5 points that are farthest away from it, and in that sense "special".
 
 ```{r}
-share_of_missings = .1
-dat_with_miss <- miss_sim(dat_num_no_missings_scaled,p=share_of_missings,seed_nr=seed_var,type = "MAR")
-mis_ind <- is.na(dat_with_miss) # missing indicator
-corrplot(cor(mis_ind),method="number")
-```
-
-### ClustImpute
-
-In the original research article, it was recommended to set the convergence point of the weight function to 30% or 60% of the total number of iterations and both the number of iteration and the number of inner clustering steps (i.e., before imputation) to number is the ~10s. We follow this recommendation here.
-
-```{r}
-res_clustimpute <- ClustImpute(as.data.frame(dat_with_miss),nr_cluster=nr_clusters,seed_nr=seed_var,nr_iter=10,n_end=6,c_steps=15)
-```
-
-We'll make use of the RandIndex to compare the result of Clustimpute on missing data with the original result from flexclust (taking the latter as "true labels"):
-
-```{r}
-external_validation(predict(cclust_res), res_clustimpute$clusters)
-```
-
-
-### Cluster results & Visualization
-
-Besides the visualization techniques seen before, ClustImpute has two build-in types of marginal plots: histogram and barplot. The histogram shows the marginal distribution by cluster and feature together with the cluster centroid (orange).
-
-```{r , fig.height = 13, fig.width = 15}
-plot(res_clustimpute,size_vline=1.5)+xlim(-2.5,2.5)+geom_vline(xintercept=0,color="red")
-```
-
-The box plot shows, in particular, that marginal distributions within a cluster might become quite skewed, potentially in different directions as for ShipEngYear. Also some clusters have a more narrow specified distribution. For example, ShipPower is less clearly specified in cluster 4 and 5 than in the other clusters.
-
-```{r , fig.height = 10, fig.width = 15}
-plot(res_clustimpute,type="box")+xlim(-5,5)
-```
-
-We can visualize the completed data and clustering results using T-SNE.
-
-```{r}
-set.seed(seed_var)
-complete_data_without_duplicates = unique(res_clustimpute$complete_data)
-tsne_out_2 <- Rtsne(complete_data_without_duplicates,pca=FALSE)
-data_tsne_2 <- as.data.table(tsne_out_2$Y)
-ggplot(data_tsne_2,aes(x=V1,y=V2,color=factor(predict(res_clustimpute,complete_data_without_duplicates)))) + geom_point() + guides(color=guide_legend(title="Cluster"))
-```
-
-T-SNE on full data (normally not possible in the setting of real missings): We can observe that what is now cluster 6 and 5 was cluster 2 and 3 before, and what is now cluster 4 was cluster 6.
-
-It is normal that the ordering of the clustering changes in a new run, therefore the RandIndex is independent of this.
-
-```{r}
-ggplot(data_tsne,aes(x=V1,y=V2,color=factor(res_clustimpute$clusters))) + geom_point() + guides(color=guide_legend(title="Cluster"))
-```
-
-A good diagnostic based for any stochastic imputation approach is to monitor mean and std. error of the imputed value to observe that both values converge to a stationary distribution with increasing number of iterations.
-
-
-### MICE + Flexclust
-
-We run MICE here as a pre-processing step. The package creates multiple imputations (here: only 1) for multivariate missing data using predictive mean matching (other methods available as well).
-
-```{r}
-dat_mice <- mice(dat_with_miss, printFlag=FALSE, seed=seed_var, m=1)
-```
-
-After this step the data does not include NAs anymore, so we can run cclust as in the example above.
-
-```{r}
-dat_mice_completed <- complete(dat_mice)
-cclust_after_mice <- cclust(dat_mice_completed,k=nr_clusters)
-```
-
-The result is slightly worse compared to ClustImpute.
-
-```{r}
-external_validation(predict(cclust_res), predict(cclust_after_mice))
-```
-
-
-## Mixed-type Data {.tabset}
-
-Here we will use the full data including the categorical features ShipBrand, ShipHull and Departement. We use the clustMixType package here the allows the use of Gower's distance with an automatic estimation of the lambda parameter.
-
-
-### Pre-processing
-
-```{r message=FALSE, warning=FALSE}
-library(clustMixType)
-```
-
-* For this data set, there might be some chance to impute ShipBrand since there are 150 cases where it is missing but all other variables are available, plus 789 cases where it is available as well. 
-* Department has no missing. 
-* When ShipHull is missing then all numerical variables are missing as well, so there is no hope of imputing this value.
-
-```{r fig.height = 5, fig.width = 11}
-md.pattern(dat4clustering)
-```
-
-However, we'll filter out NAs here and focus only on the clustering part. In practice, you could use mice here to complete the data as in the example before, but it may be a good starting point to first consider only available data. Perhaps a missing features turns out to be irrelevant.
-
-```{r}
-dat_no_missings = unique(na.omit(dat4clustering[,mget(c(num_vars,cat_vars))]))
-```
-
-As before the numerical variables have to be scaled with scale() as above. Then we re-add the categorical features again.
-
-```{r}
-dat_no_missings_scaled <- as.data.table(scale(dat_no_missings[,mget(num_vars)]))
-dat_no_missings_scaled[,ShipBrand:=dat_no_missings$ShipBrand]
-dat_no_missings_scaled[,ShipHull:=dat_no_missings$ShipHull]
-dat_no_missings_scaled[,Departement:=dat_no_missings$Departement]
-```
-
-
-### Cluster results & Visualization
-
-Then we are ready to apply k-prototypes clustering. The number of optimal clusters may change here and one should re-do the analyses above for the numerical data, however, we keep the cluster number constant for the sake of simplicity.
-
-```{r }
-set.seed(seed_var)
-res_kproto <- kproto(x=dat_no_missings_scaled,k=nr_clusters)
-res_kproto$lambda
-```
-
-The algorithm puts a slightly higher weight to the categorical variables since lambda>1. Feature Importance shows that Brand and Departement are (almost) irrelevant when it comes to data segmentation, Hull does have some impact.
-
-```{r}
-set.seed(seed_var)
-FeatureImp_kproto <- FeatureImpCluster(res_kproto,dat_no_missings_scaled)
-plot(FeatureImp_kproto,dat_no_missings_scaled,color="type")
-```
-
-By looking at the cluster centroids we observe that indeed ShipBrand and Department are almost always equal to the most prevalent level. This implies that any other Department such as Charente Maritime has the same distance from all other centroids, for example. The "prototype" of a large, heavy and powerful ship is made of steel while wood is used for the opposite. 
-
-```{r}
-datatable(res_kproto$centers, filter = 'top', options = list(pageLength = 5, autoWidth = TRUE))
+centers_matrix <- cclust_res@centers[predict(cclust_res,dat_num_no_missings_scaled), ]
+distances <- sqrt(rowSums((dat_num_no_missings_scaled - centers_matrix)^2))
+outliers <- order(distances, decreasing=T)[1:5]
 ```
 
 
 ```{r}
-summary(dat_no_missings_scaled[,mget(cat_vars)])
+print(outliers)
 ```
 
-Setting manually a lambda value of 2, we not only increase the impact of ShipHull but also make ShipBrand a differentiator of our clustering. This may seem odd, but setting lambda alters the metric which is, after all in clustering, a tuning parameter without a ground truth.
+For example, data point 253 lies in cluster 3 but has a rather low insured value and a very high paid claim. That is something our claims analyst might want to analyze further.
 
 ```{r}
-lambda = 2
-set.seed(seed_var)
-res_kproto_manual <- kproto(x=dat_no_missings_scaled,k=nr_clusters,lambda=lambda)
-FeatureImp_kproto_manual <- FeatureImpCluster(res_kproto_manual,dat_no_missings_scaled)
-plot(FeatureImp_kproto_manual,dat_no_missings_scaled,color="type")
+dat_num_no_missings_scaled[outliers,]
+predict(cclust_res,dat_num_no_missings_scaled[outliers,])
 ```
 
-Indeed, 3 out of 6 clusters now have a brand different from BAUDOUIN (actually 3 out of 5 if we ignore cluster 4 that has only 3 data points)
+These are indeed the points that do not look well separated in the "T-SNE map".
 
 ```{r}
-datatable(res_kproto_manual$centers, filter = 'top', options = list(pageLength = 5, autoWidth = TRUE))
+data_tsne$distances <- distances
+ggplot(data_tsne,aes(x=V1,y=V2,color=distances)) + geom_point() + scale_color_gradient2()
 ```
 
-UMAP & T-SNE require numerical data, so either one uses dummy coding are uses the categorical features only for visualization (e.g., changing the color according to ShipHull instead of predicted cluster)
+
+## Using DBSCAN
+
+DBSCAN is the only algorithm among the ones we are focusing here that has a build-in concept of outlier points.
+
+https://cran.r-project.org/web/packages/dbscan/vignettes/hdbscan.html
+
+
+## Probabily-based (Model-based clustering)

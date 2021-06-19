@@ -2,7 +2,10 @@ Agenda
 
 1. Beyond k-means: prob, Dbscan
 
-2. Cluster eval: Recap, Davies Bouldin, cf. Phillips Paper for more?
+2. Cluster evalulation and interpretation: Recap, Davies Bouldin, cf. Phillips Paper for more?
+BD
+FeatureImp
+https://cran.r-project.org/web/packages/OneR/vignettes/OneR.html
 
 3. Dimensionality reduction
 Feature Selection (search based on cluster eval? + FeatureImpCluster)
@@ -10,8 +13,8 @@ Feature mapping (run hclust on the features!)
 
 4. Outlier detection
 kmeans
+dbscan
 lowest probabilities
 
-5. missings -> mice
-
-6. Unknown categories [likely too much]
+5. Unknown categories [likely too much]
+ja neuclustern ohne gender wäre eine option, neu clustern mit der neuen kategorie nur wenn es genug daten gibt. dachte ein netter proxy könnte ja sein dass man supvervised ein modell auf die alten cluster trainiert, aber eben gender weglässt. falls die "alten" korrelationen auch für "divers" gelten gewinnt man sogar etwas im verlgeich zur distanzberechnung mühsam ohne gender
