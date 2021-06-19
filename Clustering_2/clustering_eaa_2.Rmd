@@ -1,5 +1,5 @@
 ---
-title: "Practical Application of Clustering in Insurance: Clustering of Marine Losses II"
+title: "Advanced Concepts of Clustering in Insurance: Clustering of Marine Losses"
 output:   
   html_document:
     toc: true
@@ -177,6 +177,14 @@ We'll filter out NAs here and focus only on the clustering part. In practice, yo
 dat_no_missings = unique(na.omit(dat4clustering[,mget(c(num_vars,cat_vars))]))
 ```
 
+As before the numerical variables have to be scaled with scale() as above. Then we re-add the categorical features again.
+
+```{r}
+dat_no_missings_scaled <- as.data.table(scale(dat_no_missings[,mget(num_vars)]))
+dat_no_missings_scaled[,ShipBrand:=dat_no_missings$ShipBrand]
+dat_no_missings_scaled[,ShipHull:=dat_no_missings$ShipHull]
+dat_no_missings_scaled[,Departement:=dat_no_missings$Departement]
+```
 
 
 # Clustering algorithms {.tabset}
@@ -228,10 +236,10 @@ The result seems to be of less use for this data - most ships fall into cluster 
 Similarly as with k-means, data with mixed data types can per se be used with DBSCAN if the pairwise distances are computed a-priori.
 
 
-## Gaussian Mixture Model
+## Model-based clustering
 
 
-### Numerical data
+### Gaussian Mixture Model for numerical data
 
 
 ```{r}
@@ -275,20 +283,81 @@ hist(probab_of_majority_class)
 
 ### Mixed data types
 
+
+Multivariate diagonal Gaussian Mixture Models + Dirichlet Distribution(?)
+
+Let us write a multidimensional Gaussian mixture model in the fromGaussian_s*withs*,the different ways to parameterize the standard-deviation parameters of a Gaussian mixture: sjk means  that  we  have  one  standard-deviation  parameter  for  each  variable  in  eachcomponen
+
+pjk: probably means that there is one probability for each level of a categorical variable and each component
+
+All models are conditionally independent (given the parameters), thus the density of each component (i.e., cluster) is the product of all univariate densities.
+
+For the purely numerical data we were estimating covariance matrices without the restriction of them being diagonal. This is the trade of in this situation.
+
 ```{r}
-library(clustvarsel)
+library(MixAll)
+ldata = list(dat_no_missings_scaled[,mget(cat_vars)],
+             dat_no_missings_scaled[,mget(num_vars)])
+lnames = c("categorical_pk_pjk","gaussian_pk_sjk")
+set.seed(seed_var)
+clustermix_res <- clusterMixedData(ldata, lnames, 
+                                   nbCluster = 5:9, 
+                                   strategy = clusterFastStrategy(),
+                                   criterion = "BIC")
+summary(clustermix_res)
 ```
+
+```{r}
+pred_clustermix <- clustermix_res@zi
+# pred_clustermix <- clusterPredict(ldata,clustermix_res) # for new data
+table(pred_clustermix)
+```
+
 
 
 # Cluster evaluation and interpretation {.tabset}
 
 https://cran.r-project.org/web/packages/clusterSim/index.html
 
-tsne again
-feature importance again
 
 ## Cluster evaluation metrics
 
+### Adjusted RandIndex
+
+There is a rather low consistency between the result from GMM and k-Means, as the adjusted RandIndex shows. The different assumptions lead to quite different segmentations.
+
+```{r}
+external_validation(pred_gmm_res$cluster_labels,flexclust::predict(cclust_res),
+                    method = "adjusted_rand_index")
+```
+
+
+### Davies-Bouldin
+
+ToDo Read up on this
+ 
+```{r}
+# library(clv) todo remove
+library(clusterSim)
+cclust_db <- index.DB(dat_num_no_missings_scaled, flexclust::predict(cclust_res))
+cclust_db$DB
+```
+
+
+Higher value for GMM
+
+```{r}
+gmm_db <- index.DB(dat_num_no_missings_scaled, pred_gmm_res$cluster_labels)
+gmm_db$DB
+```
+
+
+```{r}
+gmm_db <- index.DB(dat_num_no_missings_scaled, pred_gmm_res$cluster_labels)
+gmm_db$DB
+```
+
+Note: Before applying this function to DBSCAN one hast to take out the rows belonging to the outlier cluster 0! Thus the result is not comparable to the one for the other algorithms
 
 
 ## Feature Importance
@@ -306,6 +375,9 @@ set.seed(seed_var)
 FeatureImp_res <- FeatureImpCluster(cclust_res,as.data.table(dat_num_no_missings_scaled))
 plot(FeatureImp_res)
 ```
+
+
+# todo use predictGMM as prediction function
 
 
 ## Vizualization using T-SNE
@@ -335,8 +407,33 @@ ggplot(data_tsne,aes(x=V1,y=V2,color=factor(predict(cclust_res)))) + geom_point(
 ```
 
 
+todo: same for GMM
 
 
+## Interpretation using supervised ML
+
+A simple supervised machine learning algorithm can be easier to interpret than a complex unsupervised algorithm.
+
+```{r}
+library(OneR)
+dat_with_label <- dat_num_no_missings_scaled_df
+dat_with_label$cluster <- factor(pred_gmm_res$cluster_labels)
+gmm_formula <- as.formula(paste0("cluster ~ ",paste(colnames(dat_num_no_missings_scaled_df),collapse = " + ")))
+gmm_formula
+```
+
+Why the error?
+
+```{r}
+gmm_proxy_model <- OneR(formula=gmm_formula, data=dat_with_label)
+gmm_proxy_model
+```
+
+2/3rd of our ships can be correctly classified using ShipLength only! However, note that this is not a valid evaluation of our one-rule algorithm, since we are using the training set. The performance can be much worse on a new list of shops.
+
+Nevertheless we observe that the length is a quite relevant feature, and while cluster 4 and 5 contain mostly smaller ships, 1 and 6 contain rather large ships.
+
+This is not limited to OneR, one could use decision tree or a GLM as well!
 
 # Dimensionality reduction
 
@@ -397,14 +494,13 @@ boxplot(savedImp)
 ```
 
 
-
-
-
 ## Feature Selection in Model-based clustering
 
+This seems to be super slow...?
 
-```{r}
+```{r, eval=FALSE}
 library(clustvarsel)
+clustvarsel_res <- clustvarsel(dat_num_no_missings_scaled,G=nr_clusters)
 ```
 
 
@@ -445,7 +541,25 @@ ggplot(data_tsne,aes(x=V1,y=V2,color=distances)) + geom_point() + scale_color_gr
 
 DBSCAN is the only algorithm among the ones we are focusing here that has a build-in concept of outlier points.
 
-https://cran.r-project.org/web/packages/dbscan/vignettes/hdbscan.html
+```{r}
+outlier_dbscan <- which(hdbscan_res$cluster==0)
+```
+
 
 
 ## Probabily-based (Model-based clustering)
+
+Outlier: probability of belonging to assigned cluster is below 50% (this can happen since we have more than 2 clusters)
+
+```{r}
+outlier_gmm <- which(probab_of_majority_class<.5)
+```
+
+## Comparison
+
+Overlap
+
+```{r}
+# Reduce(intersect, list(a,b,c))
+```
+
