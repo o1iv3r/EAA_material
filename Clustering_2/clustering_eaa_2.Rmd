@@ -212,7 +212,7 @@ cclust_res
 
 ### Mixed data types
 
-One can use the clustMixType as in the first part of the course. Alternatively,one can use partitioning around medoids, where one computes the distance matrix using Gower's distance a-priori. However, this approach ist tather slow (and memory intensive) and works only for smaller data sets
+One can use the clustMixType as in the first part of the course which uses the k-prototypes algorithm. Alternatively,one can use partitioning around medoids, where one computes the distance matrix using Gower's distance a-priori. However, this approach is rather slow (and memory intensive) and works only for smaller data sets
 
 
 ## Hierarchical dbscan
@@ -317,9 +317,6 @@ table(pred_clustermix)
 
 # Cluster evaluation and interpretation {.tabset}
 
-https://cran.r-project.org/web/packages/clusterSim/index.html
-
-
 ## Cluster evaluation metrics
 
 ### Adjusted RandIndex
@@ -416,7 +413,7 @@ A simple supervised machine learning algorithm can be easier to interpret than a
 
 OneR will pick one single variable and then tries to find rules that associate its values with the target. 
 
-todo check out alternatives
+todo check out alternatives 
 https://rviews.rstudio.com/2020/05/21/modern-rule-based-models/
 
 ```{r}

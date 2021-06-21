@@ -531,7 +531,7 @@ external_validation(predict(cclust_res), predict(cclust_after_mice))
 
 ## Mixed-type Data {.tabset}
 
-Here we will use the full data including the categorical features ShipBrand, ShipHull and Departement. We use the clustMixType package here the allows the use of Gower's distance with an automatic estimation of the lambda parameter.
+Here we will use the full data including the categorical features ShipBrand, ShipHull and Departement. We use the clustMixType package here with an automatic estimation of the lambda parameter.
 
 
 ### Pre-processing
