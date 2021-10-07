@@ -368,7 +368,14 @@ table(pred_clustermix)
 
 ## Cluster evaluation metrics
 
+We'd focus on k-means and GMM here since hdbscan produced essentially only one large cluster. Moreover, cluster 0 cannot be treated as a cluster since it is merely a collection of outliers. To make a somewhat fair comparison one would have to take out all rows belonging to the outlier cluster 0 before calculating the metrics (thereby accepting that these points are really outliers).
+
+
 ### Adjusted RandIndex
+
+The RandIndex goes through all pairs of observations and counts which fraction of them are both in the same cluster or both in different ones, in the k-means or the GMM segmentation (even when the clusters are different, for such a pair the segmentation is consistent since both observations are considered similar or un-similar in each segmentation).
+
+The adjusted Rand index accounts for the fact that some overlap might be just to random chance, and establishes a baseline by using the expected similarity of all pairwise comparisons between clusterings obtained by a random clustering
 
 There is a rather low consistency between the result from GMM and k-Means, as the adjusted RandIndex shows. The different assumptions lead to quite different segmentations.
 
@@ -380,50 +387,75 @@ external_validation(pred_gmm_res$cluster_labels,flexclust::predict(cclust_res),
 
 ### Davies-Bouldin
 
-ToDo Read up on this
- 
+
 ```{r}
-# library(clv) todo remove
 library(clusterSim)
-cclust_db <- index.DB(dat_num_no_missings_scaled, flexclust::predict(cclust_res))
+```
+
+The definition of the Davies-Bouldin (DB) index of a segmentation is a bit involved. The dispersion (or variation) within cluster $i$ can be defined as $ S_i = (\sum_{x \in C_i} |x-c_i|^q)^{1/q} $, where $c_i$ denotes the centroid of the cluster. For $q=2$ this corresponds to the standard deviation within cluster $i$ since the centroid is defined as the mean.
+
+A measure of distance between the centroids of two different clusters can be computed by 
+$ M_{i,j} = (\sum_{k=1}^n |c_{i,k}-c_{j,k}|^p)^{1/p} $. For $p=2$ this is simply the Euclidean distance between the centroids.
+
+The separation of cluster $i$ from all other cluster can then be computed by $D_i = max_{j\neq i}\frac{S_i+S_j}{M_{i,j}}$, that is, for the "worst case" pairing with cluster $i$, the ratio between the sum of within cluster dispersions and the between cluster distance.
+
+The DB index is then defined as the average over all clusters
+$DB = \frac{1}{k}\sum_{i=1}^k D_i$. Thus one computes, for the "worst case" pair of clusters, the 
+
+Consequently, a lower DB implies a better separation: Then, even all clusters are rather far apart and tightly centered around their mean.
+
+```{r}
+cclust_db <- index.DB(dat_num_no_missings_scaled, flexclust::predict(cclust_res),
+                      p=2, q=2)
 cclust_db$DB
 ```
 
 
-Higher value for GMM
+There is a higher value for GMM, meaning that k-means provides a better segmentation.
 
 ```{r}
-gmm_db <- index.DB(dat_num_no_missings_scaled, pred_gmm_res$cluster_labels)
+gmm_db <- index.DB(dat_num_no_missings_scaled, pred_gmm_res$cluster_labels, p=2, q=2)
 gmm_db$DB
 ```
 
-
-```{r}
-gmm_db <- index.DB(dat_num_no_missings_scaled, pred_gmm_res$cluster_labels)
-gmm_db$DB
-```
-
-Note: Before applying this function to DBSCAN one hast to take out the rows belonging to the outlier cluster 0! Thus the result is not comparable to the one for the other algorithms
 
 
 ## Feature Importance
 
-Permutation based approach to determine the overall relevance of a feature for the segmentation. Parallels the approach taken in classification.
+> CHAT: What would you expect to be the most relevant variable? Meaning that if we randomly permute this variable, the clustering changes the most.
 
-```{r message=FALSE}
+Permutation based approach to determine the overall relevance of a feature for the segmentation. Parallels the approach taken in classification tasks.
+
+```{r message=FALSE, warning=FALSE}
 library(FeatureImpCluster)
 ```
 
-You'll see that features with high importance strongly vary between cluster centroids (cf. barplot above).
+We observe that build and engine year have the highest importance, while claims paid is irrelevant for the clustering result.
 
 ```{r}
 set.seed(seed_var)
-FeatureImp_res <- FeatureImpCluster(cclust_res,as.data.table(dat_num_no_missings_scaled))
-plot(FeatureImp_res)
+FeatureImp_cclust <- FeatureImpCluster(cclust_res,as.data.table(dat_num_no_missings_scaled))
+plot(FeatureImp_cclust)
 ```
 
+Before we can calculate the feature importance of oru Gaussian-Mixture-Model, we have to define a prediction function the maps the cluster object and a data table to a vector with integers, the cluster assignments per row of the data table.
 
-# todo use predictGMM as prediction function
+```{r}
+predictGMM_labels <- function(gmm,dat){
+  return (predictGMM(gmm,dat)$cluster_labels)
+}
+```
+
+ToDo Fix Bug in FeatureImpCluster first
+
+```{r, eval=FALSE}
+set.seed(seed_var)
+FeatureImp_gmm <- FeatureImpCluster(clusterObj = gmm_res,
+                                    data = as.data.table(dat_num_no_missings_scaled),
+                                    predFUN = predictGMM_labels)
+plot(FeatureImp_gmm)
+```
+
 
 
 ## Vizualization using T-SNE
@@ -443,17 +475,19 @@ set.seed(seed_var)
 tsne_out <- Rtsne(dat_num_no_missings_scaled,pca=FALSE, perplexity = 30)
 ```
 
-Within this (non-linear) 2-dimensional projection, cluster 6 is rather separated from the other points: All other clusters have a much lower number of engines. 
-
-Also, we can recover the result that cluster 2 is almost always "shadowing cluster" 3, and perhaps one could just see these two as one single cluster.
+Within this (non-linear) 2-dimensional projection, we see that indeed not all clusters are terribly well separated.
 
 ```{r}
 data_tsne <- as.data.table(tsne_out$Y)
 ggplot(data_tsne,aes(x=V1,y=V2,color=factor(predict(cclust_res)))) + geom_point() + guides(color=guide_legend(title="Cluster"))
 ```
 
+We can do the same for GMM
 
-todo: same for GMM
+```{r}
+data_tsne <- as.data.table(tsne_out$Y)
+ggplot(data_tsne,aes(x=V1,y=V2,color=factor(predictGMM_labels(gmm_res,dat_num_no_missings_scaled)))) + geom_point() + guides(color=guide_legend(title="Cluster"))
+```
 
 
 ## Interpretation using supervised ML
@@ -485,6 +519,8 @@ gmm_proxy_model
 Nevertheless we observe that the length is a quite relevant feature, and while cluster 4 and 5 contain mostly smaller ships, 1 and 6 contain rather large ships.
 
 This is not limited to OneR, one could use decision tree or a GLM as well!
+
+
 
 # Dimensionality reduction
 
