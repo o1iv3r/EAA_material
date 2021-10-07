@@ -1,7 +1,8 @@
 ---
 title: "Advanced Concepts of Clustering in Insurance: Clustering of Marine Losses"
 output:   
-  html_document:
+  # html_document:
+  html_notebook:
     toc: true
     number_sections: true
     theme: readable
@@ -9,6 +10,12 @@ output:
       collapsed: false
       smooth_scroll: false
 ---
+
+<style type="text/css">
+  body{
+  font-size: 14pt;
+}
+</style>
 
 # Primer
 
@@ -18,7 +25,9 @@ This is an example on how to use clustering techniques to analyze insurance data
 
 This is an [CAS datasets](http://cas.uqam.ca/pub/web/CASdatasets-manual.pdf). From the official description:
 
->> The univariate dataset was collected by an unknown French private insurer and comprise 1,274 marine losses between the January 2003 and June 2006. The status of the claim (settled or opened) is determined at the end of June 2006.
+*"The univariate dataset was collected by an unknown French private insurer and comprise 1,274 marine losses between the January 2003 and June 2006. The status of the claim (settled or opened) is determined at the end of June 2006."*
+
+> THUMBS UP: Who of you has experience in marine insurance business?
 
 
 ```{r message=FALSE, warning=FALSE}
@@ -153,14 +162,20 @@ data4ridgeplot <- melt(as.data.table(dat_num_no_missings_scaled))
 ggplot(data4ridgeplot) +  geom_density_ridges(aes(x = value, y = variable)) + theme_ridges() + theme(legend.position = "none") + xlim(-2.5,2.5) # given a normal distribution ~1% should be outside of this range
 ```
 
-Typically, variables with a large variance turn out to be more important differentiators. Also correlations should be checked
+Typically, variables with a large variance turn out to be more important differentiators. Also correlations should be checked.
 
-```{r, fig.width=12, fig.height=12, warning=FALSE}
+> YES OR NO: Do you expect large correlations?
+
+```{r, fig.width=12, fig.height=12, warning=FALSE, message=FALSE}
 cor_mat <- cor(dat_num_no_missings_scaled, method="spearman")
 library(corrplot)
 corrplot.mixed(cor_mat,order="hclust",lower.col = "black")
 ```
-A combination of both can be obtained using a pairs plot (using Pearson correlation):
+
+Ship length and tonnage are (unsurprisingly) almost perfectly correlated, such as length and insured value or power. Domain knowledge can often be used to reduce trivial correlations (e.g., in life insurance: BMI instead of height and weight)
+
+
+A combination of histograms and correlations can be obtained using a pairs plot (using Pearson correlation):
 
 ```{r, warning=FALSE}
 library(GGally)
@@ -171,7 +186,7 @@ ggpairs(dat_num_no_missings_scaled_df[,c("ShipLength","ShipTonnage")], progress=
 
 ## Mixed-type Data {.tabset}
 
-We'll filter out NAs here and focus only on the clustering part. In practice, you could use mice  to complete the data, but it may be a good starting point to first consider only available data. Perhaps on of the missing features turns out to be irrelevant.
+We'll filter out NAs here and focus only on the clustering part. In practice, you could use mice  to complete the data, but it may be a good starting point to first consider only available data.
 
 ```{r}
 dat_no_missings = unique(na.omit(dat4clustering[,mget(c(num_vars,cat_vars))]))
@@ -191,6 +206,8 @@ dat_no_missings_scaled[,Departement:=dat_no_missings$Departement]
 
 ## K-Means
 
+> YES OR NO: Ever worked with k-means before?
+
 ### Numeric data
 
 We will perform a K-means Cluster Analysis using the flexclust package here. Below we run clustering algorithms repeatedly for different numbers of clusters and returns the minimum within cluster distance solution for each. The sum of within cluster distances which is decreasing with k (since between cluster distances are not counted). Ideally we'd look for an elbow / hockey stick.
@@ -202,7 +219,7 @@ find_k <- stepFlexclust(dat_num_no_missings_scaled,k_try,nrep=5,verbose=FALSE, s
 plot(find_k)
 ```
 
-Based on the result we select 7 clusters
+Based on the result and our applications we select 7 clusters.
 
 ```{r}
 nr_clusters = 7
@@ -212,12 +229,16 @@ cclust_res
 
 ### Mixed data types
 
-One can use the clustMixType as in the first part of the course which uses the k-prototypes algorithm. Alternatively,one can use partitioning around medoids, where one computes the distance matrix using Gower's distance a-priori. However, this approach is rather slow (and memory intensive) and works only for smaller data sets
+One can use the clustMixType as in the first part of the course which uses the k-prototypes algorithm.  Alternatively, one can use partitioning around medoids, where one computes the distance matrix using Gower's distance a-priori. However, this approach is rather slow (and memory intensive) and works only for smaller data sets.
 
 
 ## Hierarchical dbscan
 
-Here we are using a variant that of DBSCAN, hierarchical DBSCAN. It has the benefit that we do  only have to specify the minPts parameter. Note that not all points are clustered, cluster zero is contains all outliers. We want a cluster to contain at least 7 points.By playing around with this parameter, we see that a larger number produces very few clusters which would not be helpful, and a lower number leads to a lot of outliers. We observe that most points foll
+> YES OR NO: Do you expect the result of h-dbscan to be similar to the one for k-means?
+
+Here we are using a variant of DBSCAN, hierarchical DBSCAN. It has the benefit that we only have to specify the minPts parameter. Note that not all points are clustered, cluster zero contains all outliers but will not be a homogeneous set of similar points. 
+
+We want a cluster to contain at least 7 points, thus we set minPts=7. By playing around with this parameter, we see that a larger number produces very few clusters which would not be helpful, and a lower number leads to a lot of outliers. We observe that most points fall into cluster 2. Such a result would not be quite practical if we need segments for our claims colleagues to specialize on. However, it does provide us with a few "uncommon" examples and 48 outlier, we'll investigate at a later stage.
 
 ```{r}
 library(dbscan)
@@ -225,15 +246,17 @@ hdbscan_res <- hdbscan(dat_num_no_missings_scaled, minPts = 7)
 hdbscan_res
 ```
 
-HDBSCAN essentially computes the hierarchy of all DBSCAN* clusterings, and then uses a stability-based extraction method to find optimal cuts in the hierarchy, thus producing a flat solution. Depending on a different value for eps, we could get more or less clusters using the dbscan() function from the same package.
+HDBSCAN essentially computes the hierarchy of all DBSCAN* clusterings, meaning for all (reasonable) values of eps , the radius of the epsilon neighborhood. Then it uses a stability-based extraction method to find optimal cuts in the hierarchy, thus producing a flat solution. Depending on a different value for eps, we could get more or less clusters using the dbscan() function from the same package.
 
 ```{r}
 plot(hdbscan_res, show_flat=T)
 ```
 
+A higher value of eps would result in only 4 clusters where cluster 4 and 5 will be merged. A lower value will quickly lead to a fine segmentation of cluster 2 with lots of new clusters and potentially, also outliers.
+
 The result seems to be of less use for this data - most ships fall into cluster 2, the other categories are sparsely populated.
 
-Similarly as with k-means, data with mixed data types can per se be used with DBSCAN if the pairwise distances are computed a-priori.
+Similarly as with k-means, data with mixed data types can per se be used with DBSCAN if the pairwise distances are computed a-priori, which is normally not feasible for large data sets.
 
 
 ## Model-based clustering
@@ -241,9 +264,20 @@ Similarly as with k-means, data with mixed data types can per se be used with DB
 
 ### Gaussian Mixture Model for numerical data
 
+> CHAT: When did Carl Friedrich Gauß define the Normal/Gaussian distribution? (answer at the end of this section)
+
+Here we are making the assumption that each point, given the true cluster assignment, is follows a Gaussian distribution. This stochastic framework allows us to determine the clusters via Maximum Likelihood and evaluate the fit using statistical measures, such as the BIC (Bayesian Information Criterion), which is defined as nr_parameters * log(nr_observations) minus 2 times the log-likelihood.
+
+We fit configurations with 1 to 10 clusters, hence max_clusters=10. Ensure that the number of points >> number of components. 
+Most other parameters are used to control the algorithm, that we do not investigate in detail. In practice, some sensitivity analysis will quickly show if deviating from the defaults makes a difference or not. Ideally, one at least observes convergence for large values of km_iter and em_iter. If not, the algorithm may be unstable and not fit for the data at hand.
+
+
+```{r, message=FALSE}
+library(ClusterR)
+```
+
 
 ```{r}
-library(ClusterR)
 opt_gmm = Optimal_Clusters_GMM(dat_num_no_missings_scaled, max_clusters = 10, 
                                criterion = "BIC", dist_mode = "eucl_dist", 
                                seed_mode = "random_subset", seed= seed_var,
@@ -251,13 +285,15 @@ opt_gmm = Optimal_Clusters_GMM(dat_num_no_missings_scaled, max_clusters = 10,
                                plot_data = T)
 ```
 
+The fit becomes better if we increase the number of clusters from one, but eventually the improvement is lower than the penalization in the BIC formula. We'll decide to use 7 clusters since this value is quite close to the minimum and we want to have a rather low number of clusters for our applications.
+
 
 ```{r}
 gmm_res = GMM(dat_num_no_missings_scaled,gaussian_comps  =  7, dist_mode = "eucl_dist", 
               seed_mode = "random_subset", km_iter = 10, em_iter = 10, seed = seed_var)   
 ```
 
-
+We define a wrapper to easily obtain predictions from our Gaussian Mixture Model (GMM)
 
 ```{r}
 predictGMM <- function(x,dat) {
@@ -268,34 +304,46 @@ predictGMM <- function(x,dat) {
 }
 ```
 
+The resulting clusters are more evenly distributed 
 
 ```{r}
 pred_gmm_res <- predictGMM(gmm_res,dat_num_no_missings_scaled)
 summary(factor(pred_gmm_res$cluster_labels))
 ```
 
-Since we deal with probabilistic models, we can compute the probability that each point x belongs to cluster k. Thus one often speaks of "soft clustering". As long as no decision is taken, each point belongs to each cluster with a certain probability. Naturally, one assigns each point to the most likely cluster. We observe that the probabilities of the most likely cluster are nicely skewed to the right, indicating a clear cluser assignment for most points.
+Since we deal with probabilistic models, we can compute the probability that each point x belongs to cluster k. Thus one often speaks of "soft clustering". As long as no decision is taken, each point belongs to each cluster with a certain probability. Naturally, one assigns each point to the most likely cluster. We observe that the probabilities of the most likely cluster are nicely skewed to the right, indicating a clear cluster assignment for most points.
 
 ```{r}
 probab_of_majority_class <- apply(pred_gmm_res$cluster_proba,1,max)
 hist(probab_of_majority_class)
 ```
 
-### Mixed data types
+> YES OR NO: The 7 cluster distributions have independent components?
 
-
-Multivariate diagonal Gaussian Mixture Models + Dirichlet Distribution(?)
-
-Let us write a multidimensional Gaussian mixture model in the fromGaussian_s*withs*,the different ways to parameterize the standard-deviation parameters of a Gaussian mixture: sjk means  that  we  have  one  standard-deviation  parameter  for  each  variable  in  eachcomponen
-
-pjk: probably means that there is one probability for each level of a categorical variable and each component
-
-All models are conditionally independent (given the parameters), thus the density of each component (i.e., cluster) is the product of all univariate densities.
-
-For the purely numerical data we were estimating covariance matrices without the restriction of them being diagonal. This is the trade of in this situation.
 
 ```{r}
+gmm_res$covariance_matrices
+```
+
+What appears like a non-diagonal covariance matrix, is in fact something else: Each cluster distribution lives in an `dim(dat_num_no_missings_scaled)[2]` dimensional space, since one needs one dimension per variable, and has a diagonal covariance matrix stated in the rows. So the answer is yes, they do have independent components.
+
+Note that the 2nd component of many clusters has a zero variance, thus there is no variation. The 2nd component refers to the 2nd feature, the number of engines.
+
+*Gauß defined the Normal distribution in 1809 in his work "Theoria motus corporum coelestium in sectionibus conicis solem ambientium", which you can surprisingly even buy on Amazon.*
+
+
+### Mixed data types
+
+For data sets with numerical and categorical features, we assume a multivariate distribution that is  Gaussian for numerical components and follows a Dirichlet Distribution (that is a multivariate extension of the beta distribution) for categorical features.
+
+
+```{r, message=FALSE, warning=FALSE}
 library(MixAll)
+```
+
+In contrast to the previous setting with only numerical variables, the optimal number of clusters is 5.
+
+```{r}
 ldata = list(dat_no_missings_scaled[,mget(cat_vars)],
              dat_no_missings_scaled[,mget(num_vars)])
 lnames = c("categorical_pk_pjk","gaussian_pk_sjk")
@@ -306,14 +354,15 @@ clustermix_res <- clusterMixedData(ldata, lnames,
                                    criterion = "BIC")
 summary(clustermix_res)
 ```
+There is no need to re-fit the model with this package:
 
 ```{r}
 pred_clustermix <- clustermix_res@zi
-# pred_clustermix <- clusterPredict(ldata,clustermix_res) # for new data
+# pred_clustermix <- clusterPredict(ldata,clustermix_res) # for new data one would need the predict function
 table(pred_clustermix)
 ```
 
-
+> 3 minute BREAK. Have a bio break if you need one, get a tea / coffee or simply a glass of water.
 
 # Cluster evaluation and interpretation {.tabset}
 
