@@ -1,7 +1,6 @@
 ---
 title: "Advanced Concepts of Clustering in Insurance: Clustering of Marine Losses"
 output:   
-  # html_document:
   html_notebook:
     toc: true
     number_sections: true
@@ -9,6 +8,7 @@ output:
     toc_float:
       collapsed: false
       smooth_scroll: false
+  # html_document:
 ---
 
 <style type="text/css">
@@ -388,21 +388,21 @@ external_validation(pred_gmm_res$cluster_labels,flexclust::predict(cclust_res),
 ### Davies-Bouldin
 
 
-```{r}
+```{r, message=FALSE}
 library(clusterSim)
 ```
 
 The definition of the Davies-Bouldin (DB) index of a segmentation is a bit involved. The dispersion (or variation) within cluster $i$ can be defined as $ S_i = (\sum_{x \in C_i} |x-c_i|^q)^{1/q} $, where $c_i$ denotes the centroid of the cluster. For $q=2$ this corresponds to the standard deviation within cluster $i$ since the centroid is defined as the mean.
 
 A measure of distance between the centroids of two different clusters can be computed by 
-$ M_{i,j} = (\sum_{k=1}^n |c_{i,k}-c_{j,k}|^p)^{1/p} $. For $p=2$ this is simply the Euclidean distance between the centroids.
+$ R_{i,j} = (\sum_{k=1}^n |c_{i,k}-c_{j,k}|^p)^{1/p} $. For $p=2$ this is simply the Euclidean distance between the centroids.
 
-The separation of cluster $i$ from all other cluster can then be computed by $D_i = max_{j\neq i}\frac{S_i+S_j}{M_{i,j}}$, that is, for the "worst case" pairing with cluster $i$, the ratio between the sum of within cluster dispersions and the between cluster distance.
+The separation of cluster $i$ from all other cluster can then be computed by $r_i = max_{j\neq i}\frac{S_i+S_j}{R_{i,j}}$, that is, for the "worst case" pairing with cluster $i$, the ratio between the sum of within cluster dispersions and the between cluster distance.
 
 The DB index is then defined as the average over all clusters
-$DB = \frac{1}{k}\sum_{i=1}^k D_i$. Thus one computes, for the "worst case" pair of clusters, the 
+$DB = \frac{1}{k}\sum_{i=1}^k r_i$. Thus one computes, for the "worst case" pair of clusters, the 
 
-Consequently, a lower DB implies a better separation: Then, even all clusters are rather far apart and tightly centered around their mean.
+Consequently, a lower DB implies a better separation: In such a situation, all clusters are rather far apart and tightly centered around their mean.
 
 ```{r}
 cclust_db <- index.DB(dat_num_no_missings_scaled, flexclust::predict(cclust_res),
@@ -418,7 +418,65 @@ gmm_db <- index.DB(dat_num_no_missings_scaled, pred_gmm_res$cluster_labels, p=2,
 gmm_db$DB
 ```
 
+## Vizualization using T-SNE
 
+Visualization of high-dimensional data into 2 (or 3) dimension can be done via linear (Principal Component Analysis, Multidimensional Scaling) or non-linear projection methods. While non-linear methods often achieve better projections, they are computationally more costly and have several hyper parameters.
+
+T-SNE maps a set of points from a high-dimensional space in a lower-dimensional
+Mapping should preserve the local neighbourhood structure of each point by minimizing Kullback-Leibler divergence between the two distributions
+
+
+```{r, message=FALSE, warning=FALSE}
+library(Rtsne)
+```
+
+```{r}
+set.seed(seed_var)
+tsne_out <- Rtsne(dat_num_no_missings_scaled,pca=FALSE, perplexity = 30)
+```
+
+Within this (non-linear) 2-dimensional projection, we see that indeed not all clusters are terribly well separated.
+
+```{r}
+data_tsne <- as.data.table(tsne_out$Y)
+ggplot(data_tsne,aes(x=V1,y=V2,color=factor(predict(cclust_res)))) + geom_point() + guides(color=guide_legend(title="Cluster")) +
+scale_color_brewer(palette = "Set2")
+```
+
+> CHAT: Any ideas how to enhance this visual inspection with (quantitative) evaluation metrics?
+
+We can also connect this with intermediate calculation results of the Davies-Bouldin index. Let us consider Cluster 4, for example.The centroid of this cluster is much closer to the centroid of Cluster 7 than to all other cluster centroids. 
+
+```{r}
+cclust_db$d[,4] # matrix of distances between centroids or medoids of clusters
+```
+
+Some points are far away from the bulk (and close to Cluster 3), hence the dispersion of this cluster is rather high compared to the other clusters (actually highest).
+
+```{r}
+cclust_db$S
+```
+
+Looking at the R matrix, Cluster 4 is indeed not so well separated from Cluster 3 and 7.
+
+```{r}
+cclust_db$R
+```
+All in all, in the worst case is aggregatio (max of R matrix) is has a lower index than Cluster 1 and 6, for example, which visually show a rather high dispersion and are close to other clusters.
+
+```{r}
+cclust_db$r
+```
+
+With descriptive analyses one can (e.g. histograms and correlations) one can better understand the clusters and their similarity. A bad separation of some clusters can also motivate a re-clustering with a lower number of clusters (investigate clusters with an $r$-value that is much higher than the average, i.e., the DB index.)
+
+Of course, we can do the same plot for GMM:
+
+```{r}
+data_tsne <- as.data.table(tsne_out$Y)
+ggplot(data_tsne,aes(x=V1,y=V2,color=factor(predictGMM_labels(gmm_res,dat_num_no_missings_scaled)))) + geom_point() + guides(color=guide_legend(title="Cluster")) +
+  scale_color_brewer(palette = "Set2")
+```
 
 ## Feature Importance
 
@@ -457,69 +515,31 @@ plot(FeatureImp_gmm)
 ```
 
 
+## Interpretation using rules-based ML models
 
-## Vizualization using T-SNE
+A simple supervised machine learning algorithm may be easier to interpret than a complex unsupervised algorithm. We train this model on the cluster labels. 
 
-Visualization of high-dimensional data into 2 (or 3) dimension can be done via linear (Principal Component Analysis, Multidimensional Scaling) or non-linear projection methods. While non-linear methods often achieve better projections, they are computationally more costly and have several hyper parameters.
+> CHAT: Which supervised ML models do you know that you would call interpretable?
 
-T-SNE maps a set of points from a high-dimensional space in a lower-dimensional
-Mapping should preserve the local neighbourhood structure of each point by minimizing Kullback-Leibler divergence between the two distributions
-
+C5.0 can create an initial tree model then decompose the tree structure into a set of mutually exclusive rules. These rules can then be pruned and modified into a smaller set of potentially overlapping rules. The rules can be created using the rules option.
 
 ```{r, message=FALSE, warning=FALSE}
-library(Rtsne)
+library(C50)
 ```
+
+In the context of machine learning, a rule is a conditional logical statement that can be attached to a predicted value. Note that the conditions have to be considered in the printed order.
 
 ```{r}
-set.seed(seed_var)
-tsne_out <- Rtsne(dat_num_no_missings_scaled,pca=FALSE, perplexity = 30)
+gmm_rule <- C5.0(x = dat_num_no_missings_scaled, 
+                 y = factor(pred_gmm_res$cluster_labels), rules = TRUE)
+summary(gmm_rule)
 ```
 
-Within this (non-linear) 2-dimensional projection, we see that indeed not all clusters are terribly well separated.
+Interestingly, the attribute usage provides another source to measure variable importance. The lift values can be interpreted as an importance of the rule.
 
-```{r}
-data_tsne <- as.data.table(tsne_out$Y)
-ggplot(data_tsne,aes(x=V1,y=V2,color=factor(predict(cclust_res)))) + geom_point() + guides(color=guide_legend(title="Cluster"))
-```
+The evaluation of our algorithm should be taken with case, since we are using the training set. The performance can be much worse on a table of new ships. On our trainng set, only 14 ships are not fitted to the cluster they were originally assigned to.
 
-We can do the same for GMM
-
-```{r}
-data_tsne <- as.data.table(tsne_out$Y)
-ggplot(data_tsne,aes(x=V1,y=V2,color=factor(predictGMM_labels(gmm_res,dat_num_no_missings_scaled)))) + geom_point() + guides(color=guide_legend(title="Cluster"))
-```
-
-
-## Interpretation using supervised ML
-
-A simple supervised machine learning algorithm can be easier to interpret than a complex unsupervised algorithm.
-
-OneR will pick one single variable and then tries to find rules that associate its values with the target. 
-
-todo check out alternatives 
-https://rviews.rstudio.com/2020/05/21/modern-rule-based-models/
-
-```{r}
-library(OneR)
-dat_with_label <- dat_num_no_missings_scaled_df
-dat_with_label$cluster <- factor(pred_gmm_res$cluster_labels)
-gmm_formula <- as.formula(paste0("cluster ~ ",paste(colnames(dat_num_no_missings_scaled_df),collapse = " + ")))
-gmm_formula
-```
-
-Why the error?
-
-```{r}
-gmm_proxy_model <- OneR(formula=gmm_formula, data=dat_with_label)
-gmm_proxy_model
-```
-
-2/3rd of our ships can be correctly classified using ShipLength only! However, note that this is not a valid evaluation of our one-rule algorithm, since we are using the training set. The performance can be much worse on a new list of shops.
-
-Nevertheless we observe that the length is a quite relevant feature, and while cluster 4 and 5 contain mostly smaller ships, 1 and 6 contain rather large ships.
-
-This is not limited to OneR, one could use decision tree or a GLM as well!
-
+Such an analysis is not limited to C.50, one could use decision tree or a GLM as well.
 
 
 # Dimensionality reduction
