@@ -472,8 +472,8 @@ With descriptive analyses one can (e.g. histograms and correlations) one can bet
 Of course, we can do the same plot for GMM. We only have to define a helper function the maps the cluster object and a data table to a vector with integers, the cluster assignments per row of the data table.
 
 ```{r}
-predictGMM_labels <- function(gmm,dat){
-  return (predictGMM(gmm,dat)$cluster_labels)
+predictGMM_labels <- function(gmm,newdata){
+  return (predictGMM(gmm,newdata)$cluster_labels)
 }
 ```
 
@@ -501,9 +501,7 @@ FeatureImp_cclust <- FeatureImpCluster(cclust_res,as.data.table(dat_num_no_missi
 plot(FeatureImp_cclust)
 ```
 
-
-
-ToDo Fix Bug in FeatureImpCluster first
+It is very interesting to see the the clusters from GMM rely on quite different variables. Here Length and Tonnage are most relevant, also InsuredValue and ClaimPaid define the segments. On the other hand, ship and engine year have a very low relevance.
 
 ```{r, eval=FALSE}
 set.seed(seed_var)
