@@ -8,7 +8,6 @@ output:
     toc_float:
       collapsed: false
       smooth_scroll: false
-  # html_document:
 ---
 
 <style type="text/css">
@@ -229,7 +228,7 @@ cclust_res
 
 ### Mixed data types
 
-One can use the clustMixType as in the first part of the course which uses the k-prototypes algorithm.  Alternatively, one can use partitioning around medoids, where one computes the distance matrix using Gower's distance a-priori. However, this approach is rather slow (and memory intensive) and works only for smaller data sets.
+One can use the clustMixType as in the first part of the course which uses the k-prototypes algorithm.  Alternatively, one can use partitioning around medoids, where one computes the distance matrix using Gower's distance a-priori. However, this approach is rather slow (and memory intensive) and works only for smaller data sets. We will show an example of a clustering based on a pre-computed distance matrix later in these notes.
 
 
 ## Hierarchical dbscan
@@ -388,7 +387,7 @@ external_validation(pred_gmm_res$cluster_labels,flexclust::predict(cclust_res),
 ### Davies-Bouldin
 
 
-```{r, message=FALSE}
+```{r, message=FALSE, warning=FALSE}
 library(clusterSim)
 ```
 
@@ -544,7 +543,7 @@ Such an analysis is not limited to C.50, one could use decision tree or a GLM as
 
 # Dimensionality reduction
 
-For production or interpretation, reducing the the problem to a lower dimensional space can be helpful. What does this mean in a cluster analysis? We will show to (out of many) option:
+For production or interpretation, reducing the the problem to a lower dimensional space can be helpful. What does this mean in a cluster analysis? We will show two (out of many) options:
 
 1. One can select a subset of features that are most important for the clustering assignment
 2. One can cluster the features to obtain groups of similar features
@@ -553,32 +552,77 @@ In any case, this allows to re-compute the clusters on a lower dimensional space
 
 ## Feature Mapping
 
-We start by first computing the distance between the features
+We start by first computing the distance between the features, therefore we need to transpose the data matrix.
 
 ```{r}
 dist_dat <- dist(t(dat_num_no_missings_scaled), method = "euclidean")
 dist_dat
 ```
 
-http://www.sthda.com/english/wiki/beautiful-dendrogram-visualizations-in-r-5-must-known-methods-unsupervised-machine-learning#plot.dendrogram-function
+Based on this distance matrix, we apply a hierarchical clustering.
 
 ```{r}
 hc_res <- hclust(dist_dat)
 plot(hc_res)
 ```
 
-Sine we normalized our data, all features are on the same scale, so we could aggregate features by taking the mean, for example. Thus, in order to reduce the dimension from 8 to 5, we could average Length and Tonnage to a single variable that we call ShipSize. Note that the values of this variable can not be interpreted anymore in a meaningful way. In principle, this would also allow us to cluster a ship if one of the values is missing, in this case we would simply put full weight on the other variable. 
+Sine we normalized our data, all features are on the same scale, so we could aggregate features by taking the mean, for example. Thus, in order to reduce the dimension from 8 to 5, we could average Length and Tonnage to a single variable that we call ShipSize. 
+
+```{r, message=FALSE, warning=FALSE}
+library(dplyr)
+```
+
+
+```{r}
+dat_num_aggregated <- data.frame(dat_num_no_missings_scaled)
+dat_num_aggregated$ShipSize = 
+  (dat_num_aggregated$ShipLength + dat_num_aggregated$ShipTonnage)/2
+dat_num_aggregated <- dat_num_aggregated %>% select(!c(ShipLength,ShipTonnage))
+```
+
+Note that the values of this variable can not be interpreted anymore in a meaningful way. In principle, this would also allow us to cluster a ship if one of the values is missing, in this case we would simply put full weight on the other variable. 
+
+> YES OR NO: Do you expect the new segmentation based on Size instead of Length & Tonnage to be quite similar to the old one such that the RandIndex comparing both segmentations is near to one, say > .9 ?
+
+```{r}
+set.seed(seed_var)
+cclust_org_res <- cclust(dat_num_no_missings_scaled,k=7) # eliminate impact of the random seed
+set.seed(seed_var)
+cclust_aggr_res <- cclust(dat_num_aggregated,k=7)
+```
+
+Despite a negligible reduction (improvement) in the DB index. 
+
+```{r}
+cclust_aggr_db <- index.DB(dat_num_aggregated, flexclust::predict(cclust_aggr_res),
+                      p=2, q=2)
+cclust_aggr_db$DB
+cclust_org_db <- index.DB(dat_num_no_missings_scaled, flexclust::predict(cclust_org_res),
+                      p=2, q=2)
+cclust_org_db$DB
+```
+
+The RandIndex shows that the new segmentation differs indeed not too much from the previous one.
+
+```{r}
+external_validation(flexclust::predict(cclust_org_res),
+                    flexclust::predict(cclust_aggr_res),
+                    method = "adjusted_rand_index")
+```
+
 
 ## Feature Selection using Feature Importance
 
-Iterating over various seeds and bootstrap distributions gives a more robust estimate of feature importance.
+We used Feature Importance as a tool to better understand our clustering results. Here we benefit from it in another way: To de-select features which to not materially contribute to the clustering result.
+
+Iterating the Feature Importance algorithm over various seeds and bootstrap distributions gives a more robust estimate of feature importance.
 
 ```{r}
 # randomly sample starting seeds
 set.seed(seed_var)
 nr_seeds <- 5
-sub <- 0.7
-biter <- 5
+sub <- 0.7 # 70% subset in each iteration
+biter <- 5 # 5 bootstrap iterations
 seeds_vec <- sample(1:10000,nr_seeds)
 
 savedImp <- data.frame(matrix(0,nr_seeds,dim(dat_num_no_missings_scaled)[2]))
@@ -594,10 +638,22 @@ for (s in seeds_vec) {
 names(savedImp) <- sort(names(FeatureImp_res$featureImp))
 ```
 
-Turns out that feature importance is quite stable. Claims paid might be as well removed from the data for clustering purposes.
+Turns out that feature importance is quite stable. Claims paid might be removed from the data for clustering purposes.
 
 ```{r, fig.height = 5, fig.width = 11}
 boxplot(savedImp)
+```
+
+```{r}
+set.seed(seed_var)
+cclust_noClaimPaid_res <- cclust(da%>% select(-ClaimPaid),k=7)
+```
+
+
+```{r}
+external_validation(flexclust::predict(cclust_org_res),
+                    flexclust::predict(cclust_noClaimPaid_res),
+                    method = "adjusted_rand_index")
 ```
 
 
