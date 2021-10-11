@@ -469,12 +469,18 @@ cclust_db$r
 
 With descriptive analyses one can (e.g. histograms and correlations) one can better understand the clusters and their similarity. A bad separation of some clusters can also motivate a re-clustering with a lower number of clusters (investigate clusters with an $r$-value that is much higher than the average, i.e., the DB index.)
 
-Of course, we can do the same plot for GMM:
+Of course, we can do the same plot for GMM. We only have to define a helper function the maps the cluster object and a data table to a vector with integers, the cluster assignments per row of the data table.
+
+```{r}
+predictGMM_labels <- function(gmm,dat){
+  return (predictGMM(gmm,dat)$cluster_labels)
+}
+```
 
 ```{r}
 data_tsne <- as.data.table(tsne_out$Y)
 ggplot(data_tsne,aes(x=V1,y=V2,color=factor(predictGMM_labels(gmm_res,dat_num_no_missings_scaled)))) + geom_point() + guides(color=guide_legend(title="Cluster")) +
-  scale_color_brewer(palette = "Set2")
+  scale_color_brewer(palette = "Set3")
 ```
 
 ## Feature Importance
@@ -495,13 +501,7 @@ FeatureImp_cclust <- FeatureImpCluster(cclust_res,as.data.table(dat_num_no_missi
 plot(FeatureImp_cclust)
 ```
 
-Before we can calculate the feature importance of oru Gaussian-Mixture-Model, we have to define a prediction function the maps the cluster object and a data table to a vector with integers, the cluster assignments per row of the data table.
 
-```{r}
-predictGMM_labels <- function(gmm,dat){
-  return (predictGMM(gmm,dat)$cluster_labels)
-}
-```
 
 ToDo Fix Bug in FeatureImpCluster first
 
@@ -529,6 +529,7 @@ library(C50)
 In the context of machine learning, a rule is a conditional logical statement that can be attached to a predicted value. Note that the conditions have to be considered in the printed order.
 
 ```{r}
+set.seed(seed_var)
 gmm_rule <- C5.0(x = dat_num_no_missings_scaled, 
                  y = factor(pred_gmm_res$cluster_labels), rules = TRUE)
 summary(gmm_rule)
@@ -602,7 +603,7 @@ cclust_org_db <- index.DB(dat_num_no_missings_scaled, flexclust::predict(cclust_
 cclust_org_db$DB
 ```
 
-The RandIndex shows that the new segmentation differs indeed not too much from the previous one.
+However, the segmentation differs quite a bit from the previous one based on the raw data.
 
 ```{r}
 external_validation(flexclust::predict(cclust_org_res),
@@ -646,9 +647,11 @@ boxplot(savedImp)
 
 ```{r}
 set.seed(seed_var)
-cclust_noClaimPaid_res <- cclust(da%>% select(-ClaimPaid),k=7)
+cclust_noClaimPaid_res <- cclust(data.frame(dat_num_no_missings_scaled) %>% 
+                                   select(-ClaimPaid),k=7)
 ```
 
+Again there is some difference in the resulting segmentation. It would make sense to further investiage which rows (ships) are assigned to different clusters.
 
 ```{r}
 external_validation(flexclust::predict(cclust_org_res),
@@ -661,14 +664,21 @@ external_validation(flexclust::predict(cclust_org_res),
 
 This seems to be super slow...?
 
+ToDo: Run once on PC and persist results, or remove from script
+
 ```{r, eval=FALSE}
 library(clustvarsel)
-clustvarsel_res <- clustvarsel(dat_num_no_missings_scaled,G=nr_clusters)
+library(doParallel)
+clustvarsel_res <- clustvarsel(dat_num_no_missings_scaled,G=nr_clusters,
+                               search="greedy", direction="forward",
+                               emModels1 = "E", emModels2 = "EII", # ?mclustModelNames
+                               samp = TRUE, parallel = 3)
 ```
 
 
-
 # Outlier detection
+
+> CHAT: In a single sentence, how would you define the term "outlier"?
 
 ## Distance based (k-means)
 
@@ -685,44 +695,62 @@ outliers <- order(distances, decreasing=T)[1:5]
 print(outliers)
 ```
 
-For example, data point 253 lies in cluster 3 but has a rather low insured value and a very high paid claim. That is something our claims analyst might want to analyze further.
+For example, data point 253 lies in cluster 4 but has a rather low insured value and a very high paid claim. That is something our claims analyst might want to analyze further.
 
 ```{r}
 dat_num_no_missings_scaled[outliers,]
 predict(cclust_res,dat_num_no_missings_scaled[outliers,])
 ```
-
-These are indeed the points that do not look well separated in the "T-SNE map".
+In our T-SNE map we can highligh in which areas our outlier are lying.
 
 ```{r}
 data_tsne$distances <- distances
 ggplot(data_tsne,aes(x=V1,y=V2,color=distances)) + geom_point() + scale_color_gradient2()
 ```
 
+Note that various other analysis can be made. For example, the share of outliers by cluster.
+
+Also, the threshold "top 5" was completely arbitrary. If there are known outliers, this threshold can be calibrated in a way similar to how this is done for classification models (e.g. considering false positives / negatives on a validation set).
 
 ## Using DBSCAN
 
-DBSCAN is the only algorithm among the ones we are focusing here that has a build-in concept of outlier points.
+> CHAT: How many calculation are required to obtain the outliers in the DBSCAN segmentation ? (positive number)
+
+DBSCAN is the only algorithm among the ones we are focusing here that has a build-in concept of outlier points. Hence no calculations are required.
 
 ```{r}
 outlier_dbscan <- which(hdbscan_res$cluster==0)
+outlier_dbscan
 ```
 
+All 5 outliers from k-means are also outliers according to the DBSCAN methodology.
+
+```{r}
+outliers %in% outlier_dbscan
+```
 
 
 ## Probabily-based (Model-based clustering)
 
-Outlier: probability of belonging to assigned cluster is below 50% (this can happen since we have more than 2 clusters)
+Defintion of outlier: probability of belonging to assigned cluster is below 50% (this can happen since we have more than 2 clusters)
 
 ```{r}
 outlier_gmm <- which(probab_of_majority_class<.5)
+outlier_gmm
 ```
 
-## Comparison
+The outliers in GMM do not include the 5 outliers from k-means
 
-Overlap
+```{r} 
+outliers %in% outlier_gmm
+```
+
+And only the first one is also an outlier in DBSCAN.
 
 ```{r}
-# Reduce(intersect, list(a,b,c))
+outlier_gmm %in% outlier_dbscan
 ```
 
+All in all, we see that there is no universal concept of an outlier. It strongly depends on the clsutering methodology and how outlier is defined based on that.
+
+Ideally, and unsupervised outlier detection approach is used to identify observations for manual inspection. The result of this inspection is tracked so that there will be, in the future, a data base to train a supervised learning algorithm.

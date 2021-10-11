@@ -104,3 +104,23 @@ cclust_onehot_res <- cclust(dat_no_missings_onehot_scaled , k=nr_clusters)
 ```
 
 
+ToDo: remove tests:
+
+```{r}
+set.seed(seed_var)
+kmeans_noClaimPaid_res <- kmeans(data.frame(dat_num_no_missings_scaled) %>% 
+                                   select(-ClaimPaid),7)
+```
+
+
+```{r}
+set.seed(seed_var)
+kmeans_res <- kcca(data.frame(dat_num_no_missings_scaled),7)
+```
+
+
+```{r}
+external_validation(flexclust::predict(kcca_res),
+                    flexclust::predict(kcca_noClaimPaid_res),
+                    method = "adjusted_rand_index")
+```
