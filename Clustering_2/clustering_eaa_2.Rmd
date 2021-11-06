@@ -501,9 +501,10 @@ FeatureImp_cclust <- FeatureImpCluster(cclust_res,as.data.table(dat_num_no_missi
 plot(FeatureImp_cclust)
 ```
 
-It is very interesting to see the the clusters from GMM rely on quite different variables. Here Length and Tonnage are most relevant, also InsuredValue and ClaimPaid define the segments. On the other hand, ship and engine year have a very low relevance.
+It is very interesting to see the the clusters from GMM rely on quite different variables. Here Length and Tonnage are most relevant, also InsuredValue and ClaimPaid define the segments. On the other hand, build and engine year have a very low relevance.
 
-```{r, eval=FALSE}
+```{r}
+# Note: this code requires FeatureImpCluster version >= 0.1.5
 set.seed(seed_var)
 FeatureImp_gmm <- FeatureImpCluster(clusterObj = gmm_res,
                                     data = as.data.table(dat_num_no_missings_scaled),
@@ -549,7 +550,7 @@ For production or interpretation, reducing the the problem to a lower dimensiona
 
 In any case, this allows to re-compute the clusters on a lower dimensional space.
 
-## Feature Mapping
+## Feature Mapping / Clustering
 
 We start by first computing the distance between the features, therefore we need to transpose the data matrix.
 
@@ -660,19 +661,69 @@ external_validation(flexclust::predict(cclust_org_res),
 
 ## Feature Selection in Model-based clustering
 
-This seems to be super slow...?
+When fitting our Gaussian Mixture Model (GMM), we used BIC as a measure to decide which number of clusters to use (remember: higher is better). We can do the same here for variable selection.
 
-ToDo: Run once on PC and persist results, or remove from script
+We'll use the clustvarsel which offers a greedy search in two directions, starting from a clustering based on a single variable (forward) or from a clustering using all variables (backward), which is what we have done before.
+
+**Greedy search**:
+
+1. *Forward initialization*:  Build the best univariate cluster model: Fit all GMMs with only a single variable, keep the variable $x_{f_1}$ with the highest BIC.
+2. *Backward initialization*: Fit a GMM based on all variables $(x_{1},\ldots,x_{p})$
+3. Given a fitted *GMM* computed on the $m$ variables $(x_{f_1},\ldots,x_{f_m})$, perform an add and remove step and accept or reject based on whether BIC improves or not:
+* Add step to determine the best larger model: Fit a GMM for all pairs $(x_{f_1},\ldots,x_{f_m},x_j)$ for all $j\notin \{f_1,\ldots,f_m\}$ and keep the variable $f_{m+1}:=j$ so that the new model *GMM_Add* hat the highest BIC among all alternatives that include variables $\{f_1,\ldots,f_m\}$.
+* Remove step to determine the best smaller model: Fit a GMM for all subsets of $\{f_1,\ldots,f_m\}$ of size $m-1$, and keep the model *GMM_Remove* with the highest BIC.
+* Decision step: Among *GMM*, *GMM_Add* and *GMM_Remove*, return the model *GMM_new* with the highest BIC and repeat step 3.
+* Stopping criterion: If *GMM_new*==*GMM*, stop the search since no improvement is possible.
+
+clustvarsel allows several choices regarding the covariance structure of the Gaussian model, we simply use a covariance matrix that is proportional to the identity matrix here, i.e., an equal variance for each independent component. Further details can be found in the [original paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5096736). Of course, one can also compare BIC among different choices to improve model fit.
 
 ```{r, eval=FALSE}
 library(clustvarsel)
 library(doParallel)
-clustvarsel_res <- clustvarsel(dat_num_no_missings_scaled,G=nr_clusters,
-                               search="greedy", direction="forward",
+set.seed(seed_var)
+clustvarsel_res_forward <- clustvarsel(dat_num_no_missings_scaled,G=nr_clusters,
+                               search="greedy", direction=c("forward"),
                                emModels1 = "E", emModels2 = "EII", # ?mclustModelNames
                                samp = TRUE, parallel = 3)
+clustvarsel_res_backward <- clustvarsel(dat_num_no_missings_scaled,G=nr_clusters,
+                               search="greedy", direction=c("backward"),
+                               emModels1 = "E", emModels2 = "EII", # ?mclustModelNames
+                               samp = TRUE, parallel = 3)
+save(clustvarsel_res_forward,clustvarsel_res_backward,file="Clustering_2\\FeatureSelectionGMM.Rdata")
 ```
 
+Due to the rather long computation time we saved the results a-priori and load them from a file - feel free to run the computation yourself. 
+
+```{r}
+load("Clustering_2\\FeatureSelectionGMM.Rdata")
+```
+
+We can see the trajectory of the search: After having selected two variale, neither add nor remove improve the model.
+
+```{r, warning=FALSE}
+clustvarsel_res_forward$steps.info
+```
+Thus the final clustering is only based on two variables:
+
+```{r, warning=FALSE}
+clustvarsel_res_forward$subset
+```
+
+The procuedure removes four variables before it stops (note that step 4 seems redundant).
+
+```{r, warning=FALSE}
+clustvarsel_res_backward$steps.info
+```
+
+Thus the model ends up with four variables, extending the forward model with insured vaulue and ship power.
+
+```{r, warning=FALSE}
+clustvarsel_res_backward$subset
+```
+
+Note that this is not well in line with the permutation feature approach, where length and tonnage seemed to be the most relevant variables. Since feature importance depends on the model and the definition of itself, results may often be quite contradicting. 
+
+Further side note: Despite the correction with the number of parameters in the BIC formula, overfitting might be an issue. Essentially, each step is a statistical test and it is well know that a large number of joint tests increase the false discovery rate if thresholds (e.g. p-values) are not adjusted.
 
 # Outlier detection
 
