@@ -36,16 +36,18 @@ seed_var <- 03052021
 ```
 
 
-
 ```{r}
 data(fremarine)
 ```
 
+Data preview:
 
-```{r}
-summary(fremarine)
+```{r, message=FALSE, warning=FALSE}
+library(DT)
+datatable(dat4clustering, filter = 'top', options = list(pageLength = 5, autoWidth = TRUE))
 ```
 
+## Story
 
 We put us into the position of a fictional claims analyst that wants to understand the losses better, having the following questions / whishes in mind:
 
@@ -93,7 +95,7 @@ Numeric variables:
 * ClaimStatus: The status of the claim. Unsettled
 
 
-### Assumptions
+## Assumptions
 
 For simplicity, we assume the paid claims includes the final amount paid to the policyholder after deductible, recourse etc. We will also restrict our analysis to settled claims only for which we have complete and final information.
 
@@ -110,14 +112,6 @@ cat_vars <- c("ShipBrand","ShipHull","Departement")
 num_vars <- c("ShipPower","ShipEngNb","ShipEngYear","ShipBuildYear","ShipLength","ShipTonnage","InsuredValue","ClaimPaid")
 dat4clustering <- as.data.table(fremarine)
 dat4clustering <- dat4clustering[ClaimStatus=="settled",mget(c(num_vars,cat_vars))]
-```
-
-
-### Data preview
-
-```{r, message=FALSE, warning=FALSE}
-library(DT)
-datatable(dat4clustering, filter = 'top', options = list(pageLength = 5, autoWidth = TRUE))
 ```
 
 
@@ -201,7 +195,7 @@ dat_no_missings_scaled[,Departement:=dat_no_missings$Departement]
 ```
 
 
-# Clustering algorithms {.tabset}
+# Clustering algorithms
 
 ## K-Means
 
@@ -228,7 +222,7 @@ cclust_res
 
 ### Mixed data types
 
-One can use the clustMixType as in the first part of the course which uses the k-prototypes algorithm.  Alternatively, one can use partitioning around medoids, where one computes the distance matrix using Gower's distance a-priori. However, this approach is rather slow (and memory intensive) and works only for smaller data sets. We will show an example of a clustering based on a pre-computed distance matrix later in these notes.
+One can use the clustMixType as in the [first part of the course](https://github.com/o1iv3r/EAA_material/blob/main/Clustering_1/CAS_clustering.Rmd) which uses the k-prototypes algorithm.  Alternatively, one can use partitioning around medoids, where one computes the distance matrix using Gower's distance a-priori. However, this approach is rather slow (and memory intensive) and works only for smaller data sets. We will show an example of a clustering based on a pre-computed distance matrix later in these notes.
 
 
 ## Hierarchical dbscan
@@ -363,7 +357,7 @@ table(pred_clustermix)
 
 > 3 minute BREAK. Have a bio break if you need one, get a tea / coffee or simply a glass of water.
 
-# Cluster evaluation and interpretation {.tabset}
+# Cluster evaluation and interpretation
 
 ## Cluster evaluation metrics
 
@@ -391,10 +385,10 @@ external_validation(pred_gmm_res$cluster_labels,flexclust::predict(cclust_res),
 library(clusterSim)
 ```
 
-The definition of the Davies-Bouldin (DB) index of a segmentation is a bit involved. The dispersion (or variation) within cluster $i$ can be defined as $ S_i = (\sum_{x \in C_i} |x-c_i|^q)^{1/q} $, where $c_i$ denotes the centroid of the cluster. For $q=2$ this corresponds to the standard deviation within cluster $i$ since the centroid is defined as the mean.
+The definition of the Davies-Bouldin (DB) index of a segmentation is a bit involved. The dispersion (or variation) within cluster $i$ can be defined as $S_i = (\sum_{x \in C_i} |x-c_i|^q)^{1/q}$, where $c_i$ denotes the centroid of the cluster. For $q=2$ this corresponds to the standard deviation within cluster $i$ since the centroid is defined as the mean.
 
 A measure of distance between the centroids of two different clusters can be computed by 
-$ R_{i,j} = (\sum_{k=1}^n |c_{i,k}-c_{j,k}|^p)^{1/p} $. For $p=2$ this is simply the Euclidean distance between the centroids.
+$R_{i,j} = (\sum_{k=1}^n |c_{i,k}-c_{j,k}|^p)^{1/p}$. For $p=2$ this is simply the Euclidean distance between the centroids.
 
 The separation of cluster $i$ from all other cluster can then be computed by $r_i = max_{j\neq i}\frac{S_i+S_j}{R_{i,j}}$, that is, for the "worst case" pairing with cluster $i$, the ratio between the sum of within cluster dispersions and the between cluster distance.
 
@@ -566,7 +560,7 @@ hc_res <- hclust(dist_dat)
 plot(hc_res)
 ```
 
-Sine we normalized our data, all features are on the same scale, so we could aggregate features by taking the mean, for example. Thus, in order to reduce the dimension from 8 to 5, we could average Length and Tonnage to a single variable that we call ShipSize. 
+Sine we normalized our data, all features are on the same scale, so we could aggregate features by taking the mean, for example. Thus, in order to reduce the dimension from 8 to 7, we could average Length and Tonnage to a single variable that we call ShipSize. 
 
 ```{r, message=FALSE, warning=FALSE}
 library(dplyr)
@@ -613,7 +607,7 @@ external_validation(flexclust::predict(cclust_org_res),
 
 ## Feature Selection using Feature Importance
 
-We used Feature Importance as a tool to better understand our clustering results. Here we benefit from it in another way: To de-select features which to not materially contribute to the clustering result.
+We used Feature Importance as a tool to better understand our clustering results. Here we benefit from it in another way: To un-select features which to not materially contribute to the clustering result.
 
 Iterating the Feature Importance algorithm over various seeds and bootstrap distributions gives a more robust estimate of feature importance.
 
@@ -665,15 +659,15 @@ When fitting our Gaussian Mixture Model (GMM), we used BIC as a measure to decid
 
 We'll use the clustvarsel which offers a greedy search in two directions, starting from a clustering based on a single variable (forward) or from a clustering using all variables (backward), which is what we have done before.
 
-**Greedy search**:
+**Greedy variable search** - general algorithm:
 
 1. *Forward initialization*:  Build the best univariate cluster model: Fit all GMMs with only a single variable, keep the variable $x_{f_1}$ with the highest BIC.
 2. *Backward initialization*: Fit a GMM based on all variables $(x_{1},\ldots,x_{p})$
-3. Given a fitted *GMM* computed on the $m$ variables $(x_{f_1},\ldots,x_{f_m})$, perform an add and remove step and accept or reject based on whether BIC improves or not:
-* Add step to determine the best larger model: Fit a GMM for all pairs $(x_{f_1},\ldots,x_{f_m},x_j)$ for all $j\notin \{f_1,\ldots,f_m\}$ and keep the variable $f_{m+1}:=j$ so that the new model *GMM_Add* hat the highest BIC among all alternatives that include variables $\{f_1,\ldots,f_m\}$.
-* Remove step to determine the best smaller model: Fit a GMM for all subsets of $\{f_1,\ldots,f_m\}$ of size $m-1$, and keep the model *GMM_Remove* with the highest BIC.
-* Decision step: Among *GMM*, *GMM_Add* and *GMM_Remove*, return the model *GMM_new* with the highest BIC and repeat step 3.
-* Stopping criterion: If *GMM_new*==*GMM*, stop the search since no improvement is possible.
+3. Given a fitted *GMM* computed on the $m$ variables $(x_{f_1},\ldots,x_{f_m})$, perform an add and remove step and keep the model with the highest BIC, i.e., repeat the following steps:
+    * **Add step** to determine the best larger model: Fit a GMM for all pairs $(x_{f_1},\ldots,x_{f_m},x_j)$ for all $j\notin \{f_1,\ldots,f_m\}$ and keep the variable $f_{m+1}:=j$ so that the new model *GMM_Add* has the highest BIC among all alternatives that include variables $\{f_1,\ldots,f_m\}$.
+    * **Remove step** to determine the best smaller model: Fit a GMM for all subsets of $\{f_1,\ldots,f_m\}$ of size $m-1$, and keep the model *GMM_Remove* with the highest BIC.
+    * **Decision**: Among *GMM*, *GMM_Add* and *GMM_Remove*, return the model *GMM_new* with the highest BIC.
+    * **Stopping criterion**: If *GMM_new*==*GMM*, stop the search since no improvement is possible.
 
 clustvarsel allows several choices regarding the covariance structure of the Gaussian model, we simply use a covariance matrix that is proportional to the identity matrix here, i.e., an equal variance for each independent component. Further details can be found in the [original paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5096736). Of course, one can also compare BIC among different choices to improve model fit.
 
@@ -695,7 +689,7 @@ save(clustvarsel_res_forward,clustvarsel_res_backward,file="Clustering_2\\Featur
 Due to the rather long computation time we saved the results a-priori and load them from a file - feel free to run the computation yourself. 
 
 ```{r}
-load("Clustering_2\\FeatureSelectionGMM.Rdata")
+load("FeatureSelectionGMM.Rdata")
 ```
 
 We can see the trajectory of the search: After having selected two variale, neither add nor remove improve the model.
@@ -705,11 +699,11 @@ clustvarsel_res_forward$steps.info
 ```
 Thus the final clustering is only based on two variables:
 
-```{r, warning=FALSE}
+```{r warning=FALSE}
 clustvarsel_res_forward$subset
 ```
 
-The procuedure removes four variables before it stops (note that step 4 seems redundant).
+The procedure removes four variables before it stops. Note that step 4 seems redundant. This is because the implementation seems slightly different than explained above: The algorithm iterates between Add and Remove, unless one of the steps yields a model with only a single variable or the full model (thus two adds/removes in the beginning before the iteration starts). It stops when both steps where rejected.
 
 ```{r, warning=FALSE}
 clustvarsel_res_backward$steps.info
