@@ -1,13 +1,16 @@
 ---
-title: "Advanced Concepts of Clustering in Insurance: Clustering of Marine Losses"
-output:   
+title: 'Advanced Concepts of Clustering in Insurance: Clustering of Marine Losses'
+output:
   html_notebook:
-    toc: true
-    number_sections: true
+    toc: yes
+    number_sections: yes
     theme: readable
     toc_float:
-      collapsed: false
-      smooth_scroll: false
+      collapsed: no
+      smooth_scroll: no
+  html_document:
+    toc: yes
+    df_print: paged
 ---
 
 <style type="text/css">
@@ -43,6 +46,11 @@ data(fremarine)
 Data preview:
 
 ```{r, message=FALSE, warning=FALSE}
+library(data.table)
+cat_vars <- c("ShipBrand","ShipHull","Departement")
+num_vars <- c("ShipPower","ShipEngNb","ShipEngYear","ShipBuildYear","ShipLength","ShipTonnage","InsuredValue","ClaimPaid")
+dat4clustering <- as.data.table(fremarine)
+dat4clustering <- dat4clustering[ClaimStatus=="settled",mget(c(num_vars,cat_vars))]
 library(DT)
 datatable(dat4clustering, filter = 'top', options = list(pageLength = 5, autoWidth = TRUE))
 ```
@@ -104,27 +112,13 @@ Additionally, we decide not to use the date since:
 * Our (fictional) claims colleagues assure that our recent data set is quite homogeneous in time, there should not be strong trends.
 * New claims, obviously, have a date outside of the existing range making it hard to segment them otherwise.
 
-Thus we arrive at the following basis for our analysis:
-
-```{r, message=FALSE, warning=FALSE}
-library(data.table)
-cat_vars <- c("ShipBrand","ShipHull","Departement")
-num_vars <- c("ShipPower","ShipEngNb","ShipEngYear","ShipBuildYear","ShipLength","ShipTonnage","InsuredValue","ClaimPaid")
-dat4clustering <- as.data.table(fremarine)
-dat4clustering <- dat4clustering[ClaimStatus=="settled",mget(c(num_vars,cat_vars))]
-```
-
-
-## Fictional Setting
-
-For educational reasons, we imagine 3 different settings:
-
-1. The data set does only contain numeric variables and no missings.
-2. The data set does only contain numeric variables but some missings.
-2. The data set contains numeric and categorical variables.
 
 # Data preparation
 
+For educational reasons, we distinguish two different settings:
+
+1. The data set does only contain numeric variables.
+2. The data set contains numeric and categorical variables.
 
 ## Numeric features{.tabset}
 
@@ -261,8 +255,7 @@ Similarly as with k-means, data with mixed data types can per se be used with DB
 
 Here we are making the assumption that each point, given the true cluster assignment, is follows a Gaussian distribution. This stochastic framework allows us to determine the clusters via Maximum Likelihood and evaluate the fit using statistical measures, such as the BIC (Bayesian Information Criterion), which is defined as nr_parameters * log(nr_observations) minus 2 times the log-likelihood.
 
-We fit configurations with 1 to 10 clusters, hence max_clusters=10. Ensure that the number of points >> number of components. 
-Most other parameters are used to control the algorithm, that we do not investigate in detail. In practice, some sensitivity analysis will quickly show if deviating from the defaults makes a difference or not. Ideally, one at least observes convergence for large values of km_iter and em_iter. If not, the algorithm may be unstable and not fit for the data at hand.
+We fit configurations with 1 to 10 clusters, hence max_clusters=10. Ensure that the number of points >> number of clusters. Most other parameters are used to control the algorithm, that we do not investigate in detail. In practice, some sensitivity analysis will quickly show if deviating from the defaults makes a difference or not. Ideally, one at least observes convergence for large values of km_iter and em_iter. If not, the algorithm may be unstable and not fit for the data at hand.
 
 
 ```{r, message=FALSE}
