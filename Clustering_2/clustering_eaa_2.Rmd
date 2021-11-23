@@ -361,7 +361,7 @@ We'd focus on k-means and GMM here since hdbscan produced essentially only one l
 
 The RandIndex goes through all pairs of observations and counts which fraction of them are both in the same cluster or both in different ones, in the k-means or the GMM segmentation (even when the clusters are different, for such a pair the segmentation is consistent since both observations are considered similar or un-similar in each segmentation).
 
-The adjusted Rand index accounts for the fact that some overlap might be just to random chance, and establishes a baseline by using the expected similarity of all pairwise comparisons between clusterings obtained by a random clustering
+![Rand Index Vizualization](RandIndex.jpg)
 
 There is a rather low consistency between the result from GMM and k-Means, as the adjusted RandIndex shows. The different assumptions lead to quite different segmentations.
 
@@ -386,7 +386,9 @@ $R_{i,j} = (\sum_{k=1}^n |c_{i,k}-c_{j,k}|^p)^{1/p}$. For $p=2$ this is simply t
 The separation of cluster $i$ from all other cluster can then be computed by $r_i = max_{j\neq i}\frac{S_i+S_j}{R_{i,j}}$, that is, for the "worst case" pairing with cluster $i$, the ratio between the sum of within cluster dispersions and the between cluster distance.
 
 The DB index is then defined as the average over all clusters
-$DB = \frac{1}{k}\sum_{i=1}^k r_i$. Thus one computes, for the "worst case" pair of clusters, the 
+$DB = \frac{1}{k}\sum_{i=1}^k r_i$.
+
+![](DB_index.jpg)
 
 Consequently, a lower DB implies a better separation: In such a situation, all clusters are rather far apart and tightly centered around their mean.
 
@@ -421,7 +423,7 @@ set.seed(seed_var)
 tsne_out <- Rtsne(dat_num_no_missings_scaled,pca=FALSE, perplexity = 30)
 ```
 
-Within this (non-linear) 2-dimensional projection, we see that indeed not all clusters are terribly well separated.
+Within this (non-linear) 2-dimensional projection, we see that indeed not all clusters from the k-means segmentation are terribly well separated.
 
 ```{r}
 data_tsne <- as.data.table(tsne_out$Y)
@@ -475,6 +477,9 @@ ggplot(data_tsne,aes(x=V1,y=V2,color=factor(predictGMM_labels(gmm_res,dat_num_no
 > CHAT: What would you expect to be the most relevant variable? Meaning that if we randomly permute this variable, the clustering changes the most.
 
 Permutation based approach to determine the overall relevance of a feature for the segmentation. Parallels the approach taken in classification tasks.
+
+![Source:https://www.modulos.ai/permutation-feature-importance-deep-dive/, retrieved on November 23, 2021](Feature_Importance_Graphic.png)
+
 
 ```{r message=FALSE, warning=FALSE}
 library(FeatureImpCluster)
@@ -532,12 +537,12 @@ Such an analysis is not limited to C.50, one could use decision tree or a GLM as
 
 For production or interpretation, reducing the the problem to a lower dimensional space can be helpful. What does this mean in a cluster analysis? We will show two (out of many) options:
 
-1. One can select a subset of features that are most important for the clustering assignment
-2. One can cluster the features to obtain groups of similar features
+1. Feature Clustering: One can cluster the features to obtain groups of similar features
+2. Feature Selection: One can select a subset of features that are most important for the clustering assignment
 
 In any case, this allows to re-compute the clusters on a lower dimensional space.
 
-## Feature Mapping / Clustering
+## Feature Clustering
 
 We start by first computing the distance between the features, therefore we need to transpose the data matrix.
 
@@ -690,7 +695,7 @@ We can see the trajectory of the search: After having selected two variale, neit
 ```{r, warning=FALSE}
 clustvarsel_res_forward$steps.info
 ```
-Thus the final clustering is only based on two variables:
+Thus the final clustering is only based on two variables. Note that these are the two most relevant variables in the C5.0 model approximating the cluster result.
 
 ```{r warning=FALSE}
 clustvarsel_res_forward$subset
@@ -768,7 +773,7 @@ outliers %in% outlier_dbscan
 
 ## Probabily-based (Model-based clustering)
 
-Defintion of outlier: probability of belonging to assigned cluster is below 50% (this can happen since we have more than 2 clusters)
+Definition of outlier: probability of belonging to the assigned cluster is below 50% (this can happen since we have more than 2 clusters)
 
 ```{r}
 outlier_gmm <- which(probab_of_majority_class<.5)
