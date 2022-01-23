@@ -111,7 +111,7 @@ Additionally, we decide not to use the date since:
 
 * Our (fictional) claims colleagues assure that our recent data set is quite homogeneous in time, there should not be strong trends.
 * New claims, obviously, have a date outside of the existing range making it hard to segment them otherwise.
-
+* For ClaimCateg there is no documentation, this category will be ignored.
 
 # Data preparation
 
@@ -124,6 +124,8 @@ For educational reasons, we distinguish two different settings:
 
 
 ### Pre-processing
+
+> CHAT: Which points do we have to consider in our pre-processing?
 
 We remove categorical variables, missings and ensure that we do not introduce any duplicates
 
