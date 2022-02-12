@@ -68,30 +68,29 @@ Factor variables:
 * ShipBrand: The brand of the insured ship
 * ShipHull: The hull of the insured ship
 * Departement: The French region in which the ship is headquartered
-* ShipCateg The category of the insured ship
+* ShipCateg: The category of the insured ship
 
 Numeric variables:
 
-* ShipPower:The power of the insured ship
-* ShipEngNb: The engine number of the insured ship
-* ShipEngYear: The engine year of the insured ship
-* ShipBuildYear: The building year of the insured ship
+* ShipPower: The power of the insured ship
+* ShipEngNb: The number of engines of the insured ship
+* ShipEngYear: The build year of the engine of the insured ship
+* ShipBuildYear: The build year of the insured ship
 * ShipLength: The length of the insured ship
 * ShipTonnage: The tonnage of the insured ship
 * InsuredValue: The insured value of the insured ship
 * ClaimPaid: The paid amount (EUR) of the claim
-* ClaimStatus: The status of the claim. Unsettled
+* ClaimStatus: The status of the claim.
 
 
 ### Assumptions
 
-For simplicity, we assume the paid claims includes the final amount paid to the policyholder after deductible, recourse etc. We will also restrict our analysis to settled claims only for which we have complete and final information.
+For simplicity, we assume the paid claims includes the final amount paid to the policyholder after deductible, recourse etc. We will also restrict our analysis to *settled* claims only for which we have complete and final information. For ClaimCateg there is no documentation, this category will be ignored.
 
 Additionally, we decide not to use the date since:
 
 * Our (fictional) claims colleagues assure that our recent data set is quite homogeneous in time, there should not be strong trends.
 * New claims, obviously, have a date outside of the existing range making it hard to segment them otherwise.
-* For ClaimCateg there is no documentation, this category will be ignored.
 
 Thus we arrive at the following basis for our analysis:
 
@@ -135,7 +134,7 @@ We remove categorical variables, missings and ensure that we do not introduce an
 dat_num_no_missings = unique(na.omit(dat4clustering[,mget(num_vars)]))
 ```
 
-Here we use the Euclidean metric here. Since the numeric variables are measured on different scales (years, counts, EURs, sizes, etc.) we have to center and scale the data:
+Here we use the Euclidean metric here. Since the numeric variables are measured on different scales (years, counts, EURs, sizes, etc.) we have to *center and scale* the data:
 
 ```{r}
 dat_num_no_missings_scaled = scale(dat_num_no_missings)
@@ -143,7 +142,7 @@ dat_num_no_missings_scaled = scale(dat_num_no_missings)
 
 
 First look at the data:
-(we'll restrict the pre-processing to a bar minimum in this course)
+(we'll restrict the pre-processing to a bare minimum in this course)
 
 ```{r, message=FALSE, warning=FALSE}
 library(ggridges)
@@ -186,7 +185,7 @@ cl <- makeCluster(4, type = "PSOCK")
 clusterCall(cl, function() require("flexclust"))
 ```
 
-We see that 6 clusters provide a quite stable assignment, so this so will work with 6 clusters from now on.
+We see that 6 clusters provides the highest median and a rather stable assignment, so we will work with 6 clusters from now on.
 
 ```{r}
 nboot = 25
@@ -292,7 +291,7 @@ With a high value of 0.70579895, Cluster 2 is almost always “shadowing cluster
 
 #### Silhouette plot
 
-The silhouette value of a data point is defined as the scaled difference between the average distance of a point to all points in its own cluster to the smallest average distance to the points of a different cluster (the "2nd closest" cluster). Large silhouette values indicate good separation.This values are shown below with a within cluster average. All clusters seem fairly well separated except cluster 3.
+The silhouette value of a data point is defined as the scaled difference between the average distance of a point to all points in its own cluster to the smallest average distance to the points of a different cluster (the "2nd closest" cluster). Large silhouette values indicate good separation. This values are shown below with a within cluster average. 
 
 
 > CHAT: Which cluster has the worst separation according to the Silhouette plot?
@@ -300,6 +299,7 @@ The silhouette value of a data point is defined as the scaled difference between
 ```{r}
 plot(Silhouette(cclust_res,data=dat_num_no_missings_scaled))
 ```
+All clusters seem fairly well separated except cluster 3.
 
 Silhouette plots are often also used to decide on the number of clusters. However, in our example we only observe that are larger number coincides with more clusters with a bad separation (set eval=TRUE to see the result)
 
@@ -355,7 +355,7 @@ tsne_out <- Rtsne(dat_num_no_missings_scaled,pca=FALSE, perplexity = 30)
 
 Within this (non-linear) 2-dimensional projection, cluster 6 is rather separated from the other points: All other clusters have a much lower number of engines. 
 
-Also, we can recover the result that cluster 2 is almost always "shadowing cluster" 3, and perhaps one could just see these two as one single cluster.
+Also, we can recover the result that cluster 2 is almost always "shadowing cluster" 3, and perhaps one could just see these two as one single cluster. Also we recover the result that cluster 1 and 5 are more similar than 1 and 3.
 
 ```{r}
 data_tsne <- as.data.table(tsne_out$Y)
@@ -430,13 +430,10 @@ We'll make use of the RandIndex to compare the result of Clustimpute on missing 
 external_validation(predict(cclust_res), res_clustimpute$clusters)
 ```
 
+Besides the visualization techniques seen before, ClustImpute has two build-in types of marginal plots: histogram and barplot. The histogram shows the marginal distribution by cluster and feature together with the cluster centroid (orange), the overal mean is denoted by a red line.
 
-### Cluster results & Visualization
-
-Besides the visualization techniques seen before, ClustImpute has two build-in types of marginal plots: histogram and barplot. The histogram shows the marginal distribution by cluster and feature together with the cluster centroid (orange).
-
-```{r , fig.height = 12, fig.width = 15, warnings=FALSE}
-plot(res_clustimpute,size_vline=1.5)+xlim(-2.5,2.5)+geom_vline(xintercept=0,color="red")
+```{r , fig.height = 12, fig.width = 12, warnings=FALSE}
+plot(res_clustimpute,size_vline=1.5)+xlim(-1.5,1.5)+geom_vline(xintercept=0,color="red")
 ```
 
 The box plot shows, in particular, that marginal distributions within a cluster might become quite skewed, potentially in different directions as for ShipEngYear. Also some clusters have a more narrow specified distribution. For example, ShipPower is less clearly specified in cluster 4 and 5 than in the other clusters.
@@ -552,8 +549,7 @@ The "prototype" of a large, heavy and powerful ship (cluster 6) is made of steel
 datatable(res_kproto$centers, filter = 'top', options = list(pageLength = 5, autoWidth = TRUE))
 ```
 
-> YES OR NO: In order to increase the importance of the categorical variables, we have to increase the value of lambda?
-
+> CHAT: What can we do in order to increase the importance of the categorical variables?
 
 Setting manually a lambda value of 2, we not only increase the impact of ShipHull and ShipCategory but also makes ShipBrand a differentiator of our clustering. This may seem odd, but setting lambda alters the metric which is, after all in clustering, a tuning parameter without a ground truth. Departement is still not relevant.
 
@@ -565,7 +561,7 @@ FeatureImp_kproto_manual <- FeatureImpCluster(res_kproto_manual,dat_no_missings_
 plot(FeatureImp_kproto_manual,dat_no_missings_scaled,color="type")
 ```
 
-Indeed, 3 out of 6 clusters now have a brand different from BAUDOUIN (actually 3 out of 5 if we ignore cluster 4 that has only 3 data points)
+Indeed, 2 clusters now have a brand different from BAUDOUIN
 
 ```{r, warnings=False}
 datatable(res_kproto_manual$centers, filter = 'top', options = list(pageLength = 5, autoWidth = TRUE))
@@ -597,4 +593,4 @@ ggplot(umap_4_plot,aes(x=V1,y=V2,color=ShipHull )) +
   facet_wrap(~cluster) +
   ggtitle("UMAP plot of each cluster")
 ```
-
+Indeed, wood is more prominent in cluster 5 and steel in cluster 6
