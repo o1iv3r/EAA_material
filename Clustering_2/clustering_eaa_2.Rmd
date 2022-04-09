@@ -363,7 +363,7 @@ We'd focus on k-means and GMM here since hdbscan produced essentially only one l
 
 The RandIndex goes through all pairs of observations and counts which fraction of them are both in the same cluster or both in different ones, in the k-means or the GMM segmentation (even when the clusters are different, for such a pair the segmentation is consistent since both observations are considered similar or un-similar in each segmentation).
 
-![Rand Index Vizualization](RandIndex.jpg)
+![Rand Index Vizualization](RandIndex.png)
 
 There is a rather low consistency between the result from GMM and k-Means, as the adjusted RandIndex shows. The different assumptions lead to quite different segmentations.
 
@@ -452,7 +452,7 @@ Looking at the R matrix, Cluster 4 is indeed not so well separated from Cluster 
 ```{r}
 cclust_db$R
 ```
-All in all, in the worst case is aggregatio (max of R matrix) is has a lower index than Cluster 1 and 6, for example, which visually show a rather high dispersion and are close to other clusters.
+All in all, in the worst case is aggregation (max of R matrix) is has a lower index than Cluster 1 and 6, for example, which visually show a rather high dispersion and are close to other clusters.
 
 ```{r}
 cclust_db$r
@@ -480,7 +480,7 @@ ggplot(data_tsne,aes(x=V1,y=V2,color=factor(predictGMM_labels(gmm_res,dat_num_no
 
 Permutation based approach to determine the overall relevance of a feature for the segmentation. Parallels the approach taken in classification tasks.
 
-![Source:https://www.modulos.ai/permutation-feature-importance-deep-dive/, retrieved on November 23, 2021](Feature_Importance_Graphic.png)
+![Source:https://www.modulos.ai/permutation-feature-importance-deep-dive/, retrieved on November 23, 2021](Feature_importance_description_clustering.png)
 
 
 ```{r message=FALSE, warning=FALSE}
@@ -611,7 +611,7 @@ We used Feature Importance as a tool to better understand our clustering results
 
 Iterating the Feature Importance algorithm over various seeds and bootstrap distributions gives a more robust estimate of feature importance.
 
-```{r}
+```{r, warning=FALSE}
 # randomly sample starting seeds
 set.seed(seed_var)
 nr_seeds <- 5
