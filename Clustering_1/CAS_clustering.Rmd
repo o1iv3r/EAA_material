@@ -204,8 +204,6 @@ cclust_res
 
 ### Interpretation
 
-Visualization of clustering results
-
 #### Barchart of cluster centers
 
 A good starting point is to visualize the cluster centers and how they vary compared to the overall mean (which is zero on our scaled data). Based on this we can get some first understanding of Cluster 1 to 6:
@@ -394,7 +392,7 @@ dat_num = unique(dat4clustering[,mget(num_vars)])
 
 > CHAT: Consider the following missing data pattern. What do you observe?
 
-```{r fig.height = 5, fig.width = 11, warning=FALSE}
+```{r fig.height = 5, fig.width = 11, warning=FALSE, message=FALSE}
 library(mice)
 md.pattern(dat_num)
 ```
