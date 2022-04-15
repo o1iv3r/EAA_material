@@ -161,9 +161,6 @@ library(corrplot)
 corrplot.mixed(cor_mat,order="hclust",lower.col = "black")
 ```
 
-Ship length and tonnage are (unsurprisingly) almost perfectly correlated, such as length and insured value or power. Domain knowledge can often be used to reduce trivial correlations (e.g., in life insurance: BMI instead of height and weight)
-
-
 A combination of histograms and correlations can be obtained using a pairs plot (using Pearson correlation):
 
 ```{r, warning=FALSE}
@@ -171,6 +168,13 @@ library(GGally)
 dat_num_no_missings_scaled_df <- as.data.frame(dat_num_no_missings_scaled)
 ggpairs(dat_num_no_missings_scaled_df[,c("ShipLength","ShipTonnage")], progress=FALSE)
 ```
+
+Further pre-processing steps might be very well reasonable lead to different analyses (cf. [this](http://www.stat.columbia.edu/~gelman/research/unpublished/p_hacking.pdf) article on researchers degrees of freedom for a general account on this topic). For example:
+
+* Ship length and tonnage are (unsurprisingly) highly correlated. One could remove one of the variables or combine both into a new variable, e.g. length per ton (like in life insurance where one often uses BMI instead of height and weight)
+* ClaimPaid variable may be divided by Insured Value. Since these variables are not an objective measure of the ship but a result of an insurance process (underwriting and claims assessment), one may also remove them from the data set. In such a setting, one may further analyze if the clusters based on the similarity of the ships reflect different risk groups, which can be a preliminary step to making a supervised model aiming to predict paid claims based on the ship's covariates.
+
+In any case, domain knowledge is essential in data pre-processing.
 
 
 ## Mixed-type Data {.tabset}
@@ -420,6 +424,8 @@ Mapping should preserve the local neighbourhood structure of each point by minim
 library(Rtsne)
 ```
 
+### 2 dimensions
+
 ```{r}
 set.seed(seed_var)
 tsne_out <- Rtsne(dat_num_no_missings_scaled,pca=FALSE, perplexity = 30)
@@ -473,6 +479,32 @@ data_tsne <- as.data.table(tsne_out$Y)
 ggplot(data_tsne,aes(x=V1,y=V2,color=factor(predictGMM_labels(gmm_res,dat_num_no_missings_scaled)))) + geom_point() + guides(color=guide_legend(title="Cluster")) +
   scale_color_brewer(palette = "Set3")
 ```
+
+### 3 dimensions
+
+
+```{r, warning=FALSE}
+set.seed(seed_var)
+tsne3 <- Rtsne(dat_num_no_missings_scaled,pca=FALSE, perplexity = 30, dims = 3)
+data_tsne3 <- as.data.table(tsne3$Y)
+data_tsne3$cluster <- factor(predict(cclust_res))
+```
+
+Within this (non-linear) 2-dimensional projection, we see that indeed not all clusters from the k-means segmentation are terribly well separated.
+
+```{r, message=FALSE}
+library(plotly)
+```
+
+We'll now make use of the plotly library, since additional interactivity like rotation and filtering is helpful in a 3 dimensional plot
+
+
+```{r}
+fig <- plot_ly(data_tsne3, x = ~V1, y = ~V2, z = ~V3, color = ~cluster)
+fig <- fig %>%  add_trace(type = 'scatter3d', mode='markers', text = ~cluster,hoverinfo = 'text')
+fig
+```
+
 
 ## Feature Importance
 
