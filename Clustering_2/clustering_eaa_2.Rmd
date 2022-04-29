@@ -512,7 +512,7 @@ fig
 
 Permutation based approach to determine the overall relevance of a feature for the segmentation. Parallels the approach taken in classification tasks.
 
-![Source:https://www.modulos.ai/permutation-feature-importance-deep-dive/, retrieved on November 23, 2021](Feature_importance_description_clustering.png)
+![](Feature_importance_description_clustering.png)
 
 
 ```{r message=FALSE, warning=FALSE}
@@ -562,7 +562,7 @@ summary(gmm_rule)
 
 Interestingly, the attribute usage provides another source to measure variable importance. The lift values can be interpreted as an importance of the rule.
 
-The evaluation of our algorithm should be taken with case, since we are using the training set. The performance can be much worse on a table of new ships. On our trainng set, only 14 ships are not fitted to the cluster they were originally assigned to.
+The evaluation of our algorithm should be taken with care, since we are using the training set. The performance can be much worse on a table of new ships. On our trainng set, only 14 ships are not fitted to the cluster they were originally assigned to.
 
 Such an analysis is not limited to C.50, one could use decision tree or a GLM as well.
 
@@ -617,7 +617,7 @@ set.seed(seed_var)
 cclust_aggr_res <- cclust(dat_num_aggregated,k=7)
 ```
 
-Despite a negligible reduction (improvement) in the DB index. 
+There is a negligible reduction (improvement) in the DB index. 
 
 ```{r}
 cclust_aggr_db <- index.DB(dat_num_aggregated, flexclust::predict(cclust_aggr_res),
@@ -689,7 +689,7 @@ external_validation(flexclust::predict(cclust_org_res),
 
 When fitting our Gaussian Mixture Model (GMM), we used BIC as a measure to decide which number of clusters to use (remember: higher is better). We can do the same here for variable selection.
 
-We'll use the clustvarsel which offers a greedy search in two directions, starting from a clustering based on a single variable (forward) or from a clustering using all variables (backward), which is what we have done before.
+We'll use the clustvarsel which offers a greedy search in two directions, starting from a clustering based on a single variable (forward) or from a clustering using all variables (backward).
 
 **Greedy variable search** - general algorithm:
 
@@ -724,7 +724,7 @@ Due to the rather long computation time we saved the results a-priori and load t
 load("FeatureSelectionGMM.Rdata")
 ```
 
-We can see the trajectory of the search: After having selected two variale, neither add nor remove improve the model.
+Forward search: We can see the trajectory of the search: After having selected two variables, neither add nor remove improve the model.
 
 ```{r, warning=FALSE}
 clustvarsel_res_forward$steps.info
@@ -735,19 +735,19 @@ Thus the final clustering is only based on two variables. Note that these are th
 clustvarsel_res_forward$subset
 ```
 
-The procedure removes four variables before it stops. Note that step 4 seems redundant. This is because the implementation seems slightly different than explained above: The algorithm iterates between Add and Remove, unless one of the steps yields a model with only a single variable or the full model (thus two adds/removes in the beginning before the iteration starts). It stops when both steps where rejected.
+Backward search: The procedure removes four variables before it stops. Note that step 4 seems redundant. This is because the implementation is slightly different than explained above: The algorithm iterates between Add and Remove, unless one of the steps yields a model with only a single variable or the full model (thus two adds/removes in the beginning before the iteration starts). It stops when both steps where rejected.
 
 ```{r, warning=FALSE}
 clustvarsel_res_backward$steps.info
 ```
 
-Thus the model ends up with four variables, extending the forward model with insured vaulue and ship power.
+Thus the model ends up with four variables, extending the forward model with insured value and ship power.
 
 ```{r, warning=FALSE}
 clustvarsel_res_backward$subset
 ```
 
-Note that this is not well in line with the permutation feature approach, where length and tonnage seemed to be the most relevant variables. Since feature importance depends on the model and the definition of itself, results may often be quite contradicting. 
+Note that this is not well in line with the permutation feature approach, where length and tonnage seemed to be the most relevant variables.
 
 Further side note: Despite the correction with the number of parameters in the BIC formula, overfitting might be an issue. Essentially, each step is a statistical test and it is well know that a large number of joint tests increase the false discovery rate if thresholds (e.g. p-values) are not adjusted.
 
