@@ -354,7 +354,7 @@ pred_clustermix <- clustermix_res@zi
 table(pred_clustermix)
 ```
 
-> 3 minute BREAK. Have a bio break if you need one, get a tea / coffee or simply a glass of water.
+> Time for your questions :)
 
 # Cluster evaluation and interpretation
 
@@ -367,7 +367,7 @@ We'd focus on k-means and GMM here since hdbscan produced essentially only one l
 
 The RandIndex goes through all pairs of observations and counts which fraction of them are both in the same cluster or both in different ones, in the k-means or the GMM segmentation (even when the clusters are different, for such a pair the segmentation is consistent since both observations are considered similar or un-similar in each segmentation).
 
-![Rand Index Vizualization](RandIndex.png)
+![](RandIndex.png)
 
 There is a rather low consistency between the result from GMM and k-Means, as the adjusted RandIndex shows. The different assumptions lead to quite different segmentations.
 
@@ -458,7 +458,8 @@ Looking at the R matrix, Cluster 4 is indeed not so well separated from Cluster 
 ```{r}
 cclust_db$R
 ```
-All in all, in the worst case is aggregation (max of R matrix) is has a lower index than Cluster 1 and 6, for example, which visually show a rather high dispersion and are close to other clusters.
+
+All in all, 4 is not the "worst" cluster. The max of the R matrix, called r, has a lower index than Cluster 1 and 6, for example, which visually show a rather high dispersion and are close to other clusters.
 
 ```{r}
 cclust_db$r
@@ -564,7 +565,7 @@ Interestingly, the attribute usage provides another source to measure variable i
 
 The evaluation of our algorithm should be taken with care, since we are using the training set. The performance can be much worse on a table of new ships. On our trainng set, only 14 ships are not fitted to the cluster they were originally assigned to.
 
-Such an analysis is not limited to C.50, one could use decision tree or a GLM as well.
+Such an analysis is not limited to C.50, one could use a decision tree or a GLM as well.
 
 
 # Dimensionality reduction
@@ -701,7 +702,7 @@ We'll use the clustvarsel which offers a greedy search in two directions, starti
     * **Decision**: Among *GMM*, *GMM_Add* and *GMM_Remove*, return the model *GMM_new* with the highest BIC.
     * **Stopping criterion**: If *GMM_new*==*GMM*, stop the search since no improvement is possible.
 
-clustvarsel allows several choices regarding the covariance structure of the Gaussian model, we simply use a covariance matrix that is proportional to the identity matrix here, i.e., an equal variance for each independent component. Further details can be found in the [original paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5096736). Of course, one can also compare BIC among different choices to improve model fit.
+The R package clustvarsel allows several choices regarding the covariance structure of the Gaussian model, we simply use a covariance matrix that is proportional to the identity matrix here, i.e., an equal variance for each independent component. Further details can be found in the [original paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5096736). Of course, one can also compare BIC among different choices to improve model fit.
 
 ```{r, eval=FALSE}
 library(clustvarsel)
@@ -724,7 +725,7 @@ Due to the rather long computation time we saved the results a-priori and load t
 load("FeatureSelectionGMM.Rdata")
 ```
 
-Forward search: We can see the trajectory of the search: After having selected two variables, neither add nor remove improve the model.
+*Forward search*: We can see the trajectory of the search: After having selected two variables, neither add nor remove improve the model.
 
 ```{r, warning=FALSE}
 clustvarsel_res_forward$steps.info
@@ -735,7 +736,7 @@ Thus the final clustering is only based on two variables. Note that these are th
 clustvarsel_res_forward$subset
 ```
 
-Backward search: The procedure removes four variables before it stops. Note that step 4 seems redundant. This is because the implementation is slightly different than explained above: The algorithm iterates between Add and Remove, unless one of the steps yields a model with only a single variable or the full model (thus two adds/removes in the beginning before the iteration starts). It stops when both steps where rejected.
+*Backward search*: The procedure removes four variables before it stops. Note that step 4 seems redundant. This is because the implementation is slightly different than explained above: The algorithm iterates between Add and Remove, unless one of the steps yields a model with only a single variable or the full model (thus two adds/removes in the beginning before the iteration starts). It stops when both steps where rejected.
 
 ```{r, warning=FALSE}
 clustvarsel_res_backward$steps.info
