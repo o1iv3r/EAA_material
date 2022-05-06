@@ -688,18 +688,18 @@ external_validation(flexclust::predict(cclust_org_res),
 
 ## Feature Selection in Model-based clustering
 
-When fitting our Gaussian Mixture Model (GMM), we used BIC as a measure to decide which number of clusters to use (remember: higher is better). We can do the same here for variable selection.
+When fitting our Gaussian Mixture Model (GMM), we used BIC as a measure to decide which number of clusters to use (remember: lower is better). We can do the same here for variable selection.
 
 We'll use the clustvarsel which offers a greedy search in two directions, starting from a clustering based on a single variable (forward) or from a clustering using all variables (backward).
 
 **Greedy variable search** - general algorithm:
 
-1. *Forward initialization*:  Build the best univariate cluster model: Fit all GMMs with only a single variable, keep the variable $x_{f_1}$ with the highest BIC.
+1. *Forward initialization*:  Build the best univariate cluster model: Fit all GMMs with only a single variable, keep the variable $x_{f_1}$ with the lowest BIC.
 2. *Backward initialization*: Fit a GMM based on all variables $(x_{1},\ldots,x_{p})$
-3. Given a fitted *GMM* computed on the $m$ variables $(x_{f_1},\ldots,x_{f_m})$, perform an add and remove step and keep the model with the highest BIC, i.e., repeat the following steps:
-    * **Add step** to determine the best larger model: Fit a GMM for all pairs $(x_{f_1},\ldots,x_{f_m},x_j)$ for all $j\notin \{f_1,\ldots,f_m\}$ and keep the variable $f_{m+1}:=j$ so that the new model *GMM_Add* has the highest BIC among all alternatives that include variables $\{f_1,\ldots,f_m\}$.
-    * **Remove step** to determine the best smaller model: Fit a GMM for all subsets of $\{f_1,\ldots,f_m\}$ of size $m-1$, and keep the model *GMM_Remove* with the highest BIC.
-    * **Decision**: Among *GMM*, *GMM_Add* and *GMM_Remove*, return the model *GMM_new* with the highest BIC.
+3. Given a fitted *GMM* computed on the $m$ variables $(x_{f_1},\ldots,x_{f_m})$, perform an add and remove step and keep the model with the lowest BIC, i.e., repeat the following steps:
+    * **Add step** to determine the best larger model: Fit a GMM for all pairs $(x_{f_1},\ldots,x_{f_m},x_j)$ for all $j\notin \{f_1,\ldots,f_m\}$ and keep the variable $f_{m+1}:=j$ so that the new model *GMM_Add* has the lowest BIC among all alternatives that include variables $\{f_1,\ldots,f_m\}$.
+    * **Remove step** to determine the best smaller model: Fit a GMM for all subsets of $\{f_1,\ldots,f_m\}$ of size $m-1$, and keep the model *GMM_Remove* with the lowest BIC.
+    * **Decision**: Among *GMM*, *GMM_Add* and *GMM_Remove*, return the model *GMM_new* with the lowest BIC.
     * **Stopping criterion**: If *GMM_new*==*GMM*, stop the search since no improvement is possible.
 
 The R package clustvarsel allows several choices regarding the covariance structure of the Gaussian model, we simply use a covariance matrix that is proportional to the identity matrix here, i.e., an equal variance for each independent component. Further details can be found in the [original paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5096736). Of course, one can also compare BIC among different choices to improve model fit.
